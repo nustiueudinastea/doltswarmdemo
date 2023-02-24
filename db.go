@@ -91,6 +91,15 @@ func (db *DB) Open(dir string, commitListChan chan []Commit) error {
 		return fmt.Errorf("failed to use db: %w", err)
 	}
 
+	db.PrintQueryResult("select * from dolt_remotes")
+
+	_, err = db.i.Query("CALL DOLT_REMOTE('add','origin','protos://test');")
+	if err != nil {
+		return fmt.Errorf("failed to add remote db: %w", err)
+	}
+
+	db.PrintQueryResult("select * from dolt_remotes")
+
 	// if err != nil {
 	// 	if !strings.Contains(err.Error(), "database not found") {
 	// 		return fmt.Errorf("failed to use db: %w", err)
@@ -189,7 +198,7 @@ func (db *DB) Insert(branch string, data string) error {
 	return nil
 }
 
-func (db *DB) PrintQuery(query string) {
+func (db *DB) PrintQueryResult(query string) {
 	fmt.Println("query:", query)
 	rows, err := db.i.Query(query)
 	if err != nil {

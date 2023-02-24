@@ -40,7 +40,7 @@ var dbDir string
 // }
 
 // func showData(branch string) {
-// 	db.PrintQuery(fmt.Sprintf("SELECT * FROM `%s/%s`.protos;", dbName, branch))
+// 	db.PrintQueryResult(fmt.Sprintf("SELECT * FROM `%s/%s`.protos;", dbName, branch))
 // }
 
 func listCommits(branch string) {
@@ -69,7 +69,7 @@ func query(query string) {
 	}
 	defer db.Close()
 
-	db.PrintQuery(query)
+	db.PrintQueryResult(query)
 }
 
 // func insert(branch string, data string) error {

@@ -2,9 +2,11 @@ module github.com/protosio/testdolt
 
 go 1.19
 
-replace github.com/dolthub/driver => /Users/al3x/code/protos/code/doltsqldriver
-
-replace github.com/dolthub/dolt/go => /Users/al3x/code/protos/code/dolt/go
+replace (
+	github.com/dolthub/dolt/go => /Users/al3x/code/protos/code/dolt/go
+	github.com/dolthub/driver => /Users/al3x/code/protos/code/doltsqldriver
+	github.com/google/flatbuffers => github.com/dolthub/flatbuffers v1.13.0-dh.1
+)
 
 require (
 	github.com/bokwoon95/sq v0.1.1
