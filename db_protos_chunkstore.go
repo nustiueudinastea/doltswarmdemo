@@ -3,15 +3,22 @@ package main
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 
+	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/types"
 )
 
 type ProtosChunkStore struct {
-	logger chunks.DebugLogger
-	root   hash.Hash
+	repoId    *remotesapi.RepoId
+	repoPath  string
+	repoToken *atomic.Value // string
+
+	logger   chunks.DebugLogger
+	root     hash.Hash
+	csClient remotesapi.ChunkStoreServiceClient
 }
 
 func NewProtosChunkStore(ctx context.Context, nbf *types.NomsBinFormat) (*ProtosChunkStore, error) {
@@ -112,8 +119,26 @@ func (pcs *ProtosChunkStore) Root(ctx context.Context) (hash.Hash, error) {
 	return pcs.root, nil
 }
 
+func (pcs *ProtosChunkStore) getRepoId() (*remotesapi.RepoId, string) {
+	var token string
+	curToken := pcs.repoToken.Load()
+	if curToken != nil {
+		token = curToken.(string)
+	}
+	return pcs.repoId, token
+}
+
 func (pcs *ProtosChunkStore) loadRoot(ctx context.Context) error {
-	pcs.root = hash.New([]byte{})
+	id, token := pcs.getRepoId()
+	req := &remotesapi.RootRequest{RepoId: id, RepoToken: token, RepoPath: pcs.repoPath}
+	resp, err := pcs.csClient.Root(ctx, req)
+	if err != nil {
+		return err
+	}
+	if resp.RepoToken != "" {
+		pcs.repoToken.Store(resp.RepoToken)
+	}
+	pcs.root = hash.New(resp.RootHash)
 	return nil
 }
 
