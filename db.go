@@ -96,7 +96,7 @@ func (db *DB) Open(dir string, commitListChan chan []Commit) error {
 		return fmt.Errorf("failed to add remote db: %w", err)
 	}
 
-	db.PrintQueryResult("CALL DOLT_PULL('origin', 'main');")
+	// db.PrintQueryResult("CALL DOLT_PULL('origin', 'main');")
 
 	// if err != nil {
 	// 	if !strings.Contains(err.Error(), "database not found") {

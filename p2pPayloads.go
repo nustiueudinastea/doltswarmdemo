@@ -1,11 +1,11 @@
 package main
 
-const (
-	pingHandler               = "ping"
-	pubsubEcho  pubsubMsgType = "echo"
-)
+// const (
+// 	pingHandler               = "ping"
+// 	pubsubEcho  pubsubMsgType = "echo"
+// )
 
-type PingReq struct{}
-type PingResp struct{}
+// type PingReq struct{}
+// type PingResp struct{}
 
-type EchoReq struct{}
+// type EchoReq struct{}

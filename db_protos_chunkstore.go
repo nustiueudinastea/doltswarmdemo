@@ -23,7 +23,19 @@ type ProtosChunkStore struct {
 
 func NewProtosChunkStore(ctx context.Context, nbf *types.NomsBinFormat) (*ProtosChunkStore, error) {
 
-	cs := &ProtosChunkStore{}
+	repoId := &remotesapi.RepoId{
+		Org:      "protos",
+		RepoName: "main",
+	}
+
+	repoToken := new(atomic.Value)
+	repoToken.Store("protostoken")
+
+	cs := &ProtosChunkStore{
+		repoId:    repoId,
+		repoToken: repoToken,
+		repoPath:  "/",
+	}
 	err := cs.loadRoot(ctx)
 	if err != nil {
 		return nil, err

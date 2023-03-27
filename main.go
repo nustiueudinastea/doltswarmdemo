@@ -81,13 +81,15 @@ type EventWriter struct {
 }
 
 func (ew *EventWriter) Write(p []byte) (n int, err error) {
-	ew.eventChan <- p
-	return len(p), nil
+	logLine := make([]byte, len(p))
+	copy(logLine, p)
+	ew.eventChan <- logLine
+	return len(logLine), nil
 }
 
 func p2p(dbDir string, port int) error {
 
-	ew := &EventWriter{eventChan: make(chan []byte, 500)}
+	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 	log.SetOutput(ew)
 
 	commitListChan := make(chan []Commit, 100)

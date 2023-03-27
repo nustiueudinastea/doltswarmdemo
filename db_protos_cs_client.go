@@ -47,19 +47,19 @@ func (c *chunkStoreProtosClient) StreamDownloadLocations(ctx context.Context, op
 	if err != nil {
 		return nil, err
 	}
-	x := &chunkStoreServiceStreamDownloadLocationsClient{stream}
+	x := &chunkStoreServiceStreamDownloadLocationsServer{stream}
 	return x, nil
 }
 
-type chunkStoreServiceStreamDownloadLocationsClient struct {
+type chunkStoreServiceStreamDownloadLocationsServer struct {
 	grpc.ClientStream
 }
 
-func (x *chunkStoreServiceStreamDownloadLocationsClient) Send(m *remotesapi.GetDownloadLocsRequest) error {
+func (x *chunkStoreServiceStreamDownloadLocationsServer) Send(m *remotesapi.GetDownloadLocsRequest) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *chunkStoreServiceStreamDownloadLocationsClient) Recv() (*remotesapi.GetDownloadLocsResponse, error) {
+func (x *chunkStoreServiceStreamDownloadLocationsServer) Recv() (*remotesapi.GetDownloadLocsResponse, error) {
 	m := new(remotesapi.GetDownloadLocsResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
