@@ -1,4 +1,4 @@
-package main
+package p2p
 
 import (
 	"context"
@@ -17,6 +17,7 @@ import (
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	"github.com/protosio/testdolt/pinger"
 	"github.com/protosio/testdolt/proto"
+	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -25,6 +26,8 @@ const (
 	protosRPCProtocol = protocol.ID("/protos/rpc/0.0.1")
 	// protosUpdatesTopic            = protocol.ID("/protos/updates/0.0.1")
 )
+
+var log = logrus.New()
 
 type P2P struct {
 	host         host.Host
@@ -126,13 +129,13 @@ func (p2p *P2P) StartServer() (func() error, error) {
 
 	ctx := context.TODO()
 
-	s := grpc.NewServer(p2pgrpc.WithP2PCredentials())
-	proto.RegisterPingerServer(s, &pinger.Server{})
+	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())
+	proto.RegisterPingerServer(grpcServer, &pinger.Server{})
 
 	// serve grpc server over libp2p host
-	l := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
+	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
 	go func() {
-		err := s.Serve(l)
+		err := grpcServer.Serve(grpcListener)
 		if err != nil {
 			log.Error("grpc serve error: ", err)
 			panic(err)
@@ -146,16 +149,16 @@ func (p2p *P2P) StartServer() (func() error, error) {
 
 	peerDiscoveryStopper := p2p.peerDiscoveryProcessor()
 
-	ser := mdns.NewMdnsService(p2p.host, "protos", p2p)
-	if err := ser.Start(); err != nil {
+	mdnsService := mdns.NewMdnsService(p2p.host, "protos", p2p)
+	if err := mdnsService.Start(); err != nil {
 		panic(err)
 	}
 
 	stopper := func() error {
 		log.Debug("Stopping p2p server")
 		peerDiscoveryStopper()
-		ser.Close()
-		s.GracefulStop()
+		mdnsService.Close()
+		grpcServer.GracefulStop()
 		return p2p.host.Close()
 	}
 

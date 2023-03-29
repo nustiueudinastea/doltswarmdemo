@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/protosio/testdolt/p2p"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
@@ -87,7 +88,7 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 	return len(logLine), nil
 }
 
-func p2p(dbDir string, port int) error {
+func p2pRun(dbDir string, port int) error {
 
 	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 	log.SetOutput(ew)
@@ -99,17 +100,13 @@ func p2p(dbDir string, port int) error {
 	}
 	defer db.Close()
 
-	// listBranches()
-
-	// listCommits("main")
-
 	peerListChan := make(chan peer.IDSlice, 100)
-	p2p, err := NewManager(true, port, peerListChan)
+	p2pmgr, err := p2p.NewManager(true, port, peerListChan)
 	if err != nil {
 		return err
 	}
 
-	p2pStopper, err := p2p.StartServer()
+	p2pStopper, err := p2pmgr.StartServer()
 	if err != nil {
 		return err
 	}
@@ -153,7 +150,7 @@ func main() {
 				Name:  "server",
 				Usage: "starts p2p server",
 				Action: func(ctx *cli.Context) error {
-					return p2p(dbDir, port)
+					return p2pRun(dbDir, port)
 				},
 			},
 			{
