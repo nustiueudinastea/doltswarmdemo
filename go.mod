@@ -15,6 +15,7 @@ require (
 	github.com/dolthub/driver v0.0.0-00010101000000-000000000000
 	github.com/gdamore/tcell/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.26.3
+	github.com/orcaman/concurrent-map v1.0.0
 	github.com/rivo/tview v0.0.0-20221029100920-c4a7e501810d
 	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.9.0

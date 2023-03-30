@@ -15,6 +15,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
+	cmap "github.com/orcaman/concurrent-map"
 	"github.com/protosio/testdolt/pinger"
 	"github.com/protosio/testdolt/proto"
 	"github.com/sirupsen/logrus"
@@ -27,29 +28,50 @@ const (
 	// protosUpdatesTopic            = protocol.ID("/protos/updates/0.0.1")
 )
 
-var log = logrus.New()
+type Client struct {
+	proto.PingerClient
+}
 
 type P2P struct {
-	host         host.Host
-	PeerChan     chan peer.AddrInfo
-	peerListChan chan peer.IDSlice
+	log             *logrus.Logger
+	host            host.Host
+	PeerChan        chan peer.AddrInfo
+	peerListChan    chan peer.IDSlice
+	clients         cmap.ConcurrentMap
+	broadcastClient *BroadcastClient
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
 }
 
+func (p2p *P2P) GetClient(id peer.ID) (*Client, error) {
+	clientIface, found := p2p.clients.Get(id.String())
+	if !found {
+		return nil, fmt.Errorf("Client %s not found", id.String())
+	}
+	client, ok := clientIface.(*Client)
+	if !ok {
+		return nil, fmt.Errorf("Client %s not found", id.String())
+	}
+	return client, nil
+}
+
+func (p2p *P2P) GetBroadcastClient() *BroadcastClient {
+	return p2p.broadcastClient
+}
+
 func (p2p *P2P) peerDiscoveryProcessor() func() error {
 	stopSignal := make(chan struct{})
 	go func() {
-		log.Info("Starting peer discovery processor")
+		p2p.log.Info("Starting peer discovery processor")
 		for {
 			select {
 			case peer := <-p2p.PeerChan:
-				log.Infof("New peer. Connecting: %s", peer)
+				p2p.log.Infof("New peer. Connecting: %s", peer)
 				ctx := context.Background()
 				if err := p2p.host.Connect(ctx, peer); err != nil {
-					log.Error("Connection failed: ", err)
+					p2p.log.Error("Connection failed: ", err)
 					continue
 				}
 
@@ -61,7 +83,7 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 					tries += 1
 
 					if p2p.host.Network().Connectedness(peer.ID) != network.Connected {
-						log.Infof("Waiting for peer connection with %s(%s)", peer.ID.String(), p2p.host.Network().Connectedness(peer.ID))
+						p2p.log.Infof("Waiting for peer connection with %s(%s)", peer.ID.String(), p2p.host.Network().Connectedness(peer.ID))
 						time.Sleep(1 * time.Second)
 						continue
 					} else {
@@ -71,7 +93,7 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				}
 
 				if p2p.host.Network().Connectedness(peer.ID) != network.Connected {
-					log.Errorf("Connection to %s failed", peer.ID.String())
+					p2p.log.Errorf("Connection to %s failed", peer.ID.String())
 					continue
 				}
 
@@ -82,27 +104,29 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 					p2pgrpc.WithP2PDialer(p2p.host, protosRPCProtocol),
 				)
 				if err != nil {
-					log.Error("Grpc conn failed: ", err)
+					p2p.log.Error("Grpc conn failed: ", err)
 					continue
 				}
 
 				// client
-				c := proto.NewPingerClient(conn)
+				pingerClient := proto.NewPingerClient(conn)
+				client := &Client{pingerClient}
 
 				// test connectivity with a ping
-				_, err = c.Ping(ctx, &proto.PingRequest{
+				_, err = client.Ping(ctx, &proto.PingRequest{
 					Ping: "pong",
 				})
 				if err != nil {
-					log.Error("Ping failed: ", err)
+					p2p.log.Error("Ping failed: ", err)
 					continue
 				}
 
-				log.Infof("Connected to %s", peer.ID.String())
+				p2p.log.Infof("Connected to %s", peer.ID.String())
+				p2p.clients.Set(peer.ID.String(), client)
 				p2p.peerListChan <- p2p.host.Network().Peers()
 
 			case <-stopSignal:
-				log.Info("Stopping peer discovery processor")
+				p2p.log.Info("Stopping peer discovery processor")
 				return
 			}
 		}
@@ -115,17 +139,18 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 }
 
 func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) {
-	log.Infof("Disconnected from %s", conn.RemotePeer().String())
+	p2p.log.Infof("Disconnected from %s", conn.RemotePeer().String())
 	p2p.peerListChan <- p2p.host.Network().Peers()
 	if err := conn.Close(); err != nil {
-		log.Error("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
+		p2p.log.Error("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
 	}
+	p2p.clients.Remove(conn.RemotePeer().String())
 }
 
 // StartServer starts listening for p2p connections
 func (p2p *P2P) StartServer() (func() error, error) {
 
-	log.Infof("Starting p2p server using id %s", p2p.host.ID())
+	p2p.log.Infof("Starting p2p server using id %s", p2p.host.ID())
 
 	ctx := context.TODO()
 
@@ -137,7 +162,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	go func() {
 		err := grpcServer.Serve(grpcListener)
 		if err != nil {
-			log.Error("grpc serve error: ", err)
+			p2p.log.Error("grpc serve error: ", err)
 			panic(err)
 		}
 	}()
@@ -155,7 +180,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	}
 
 	stopper := func() error {
-		log.Debug("Stopping p2p server")
+		p2p.log.Debug("Stopping p2p server")
 		peerDiscoveryStopper()
 		mdnsService.Close()
 		grpcServer.GracefulStop()
@@ -167,11 +192,15 @@ func (p2p *P2P) StartServer() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice) (*P2P, error) {
+func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger) (*P2P, error) {
 	p2p := &P2P{
 		PeerChan:     make(chan peer.AddrInfo),
 		peerListChan: peerListChan,
+		clients:      cmap.New(),
+		log:          logger,
 	}
+
+	p2p.broadcastClient = &BroadcastClient{p2p: p2p}
 
 	prvKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
 	if err != nil {
@@ -203,6 +232,6 @@ func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice) (*P2P, 
 	}
 	p2p.host.Network().Notify(&nb)
 
-	log.Debugf("Using host with ID '%s'", host.ID().String())
+	p2p.log.Debugf("Using host with ID '%s'", host.ID().String())
 	return p2p, nil
 }

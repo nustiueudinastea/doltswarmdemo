@@ -101,7 +101,7 @@ func p2pRun(dbDir string, port int) error {
 	defer db.Close()
 
 	peerListChan := make(chan peer.IDSlice, 100)
-	p2pmgr, err := p2p.NewManager(true, port, peerListChan)
+	p2pmgr, err := p2p.NewManager(true, port, peerListChan, log)
 	if err != nil {
 		return err
 	}
