@@ -48,8 +48,8 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20221028234233-6b4d72a04fef // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
-	github.com/dolthub/go-mysql-server v0.14.1-0.20230227175231-786abd289f41 // indirect
-	github.com/dolthub/vitess v0.0.0-20230223032306-95d4b04eabad // indirect
+	github.com/dolthub/go-mysql-server v0.14.1-0.20230329021806-7d5325285657 // indirect
+	github.com/dolthub/vitess v0.0.0-20230329002110-9cebb0262ead // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/elastic/gosigar v0.14.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
@@ -158,7 +158,6 @@ require (
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.4.0 // indirect
 	golang.org/x/exp v0.0.0-20221205204356-47842c84f3db // indirect
-	golang.org/x/image v0.1.0 // indirect
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.1.0 // indirect

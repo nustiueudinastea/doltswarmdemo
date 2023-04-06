@@ -100,8 +100,13 @@ func p2pRun(dbDir string, port int) error {
 	}
 	defer db.Close()
 
+	doltDB, err := db.GetDoltDB()
+	if err != nil {
+		return err
+	}
+
 	peerListChan := make(chan peer.IDSlice, 100)
-	p2pmgr, err := p2p.NewManager(true, port, peerListChan, log)
+	p2pmgr, err := p2p.NewManager(true, port, peerListChan, log, doltDB)
 	if err != nil {
 		return err
 	}

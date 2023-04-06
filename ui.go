@@ -19,7 +19,6 @@ func uiUpdate(app *tview.Application, peerListView *tview.List, commitTreeRoot *
 				}
 				app.Draw()
 			case event := <-eventChan:
-				// fmt.Println(string(event))
 				_, err := textView.Write(event)
 				if err != nil {
 					panic(err)

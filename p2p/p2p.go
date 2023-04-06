@@ -6,6 +6,10 @@ import (
 	"time"
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
+	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
+	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
+	"github.com/dolthub/dolt/go/libraries/doltcore/remotesrv"
+	"github.com/dolthub/dolt/go/store/datas"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -16,6 +20,7 @@ import (
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
+	"github.com/protosio/testdolt/dbserver"
 	"github.com/protosio/testdolt/pinger"
 	"github.com/protosio/testdolt/proto"
 	"github.com/sirupsen/logrus"
@@ -39,6 +44,7 @@ type P2P struct {
 	peerListChan    chan peer.IDSlice
 	clients         cmap.ConcurrentMap
 	broadcastClient *BroadcastClient
+	doltDB          *doltdb.DoltDB
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
@@ -151,11 +157,18 @@ func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) 
 func (p2p *P2P) StartServer() (func() error, error) {
 
 	p2p.log.Infof("Starting p2p server using id %s", p2p.host.ID())
-
 	ctx := context.TODO()
 
+	// prepare dolt chunk store server
+	dbd := doltdb.HackDatasDatabaseFromDoltDB(p2p.doltDB)
+	cs := datas.ChunkStoreFromDatabase(dbd)
+	chunkStoreCache := dbserver.NewCSCache(cs.(remotesrv.RemoteSrvStore))
+	chunkStoreServer := dbserver.NewProtosChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache)
+
+	// register grpc servers
 	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())
 	proto.RegisterPingerServer(grpcServer, &pinger.Server{})
+	remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
 
 	// serve grpc server over libp2p host
 	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
@@ -192,12 +205,13 @@ func (p2p *P2P) StartServer() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger) (*P2P, error) {
+func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db *doltdb.DoltDB) (*P2P, error) {
 	p2p := &P2P{
 		PeerChan:     make(chan peer.AddrInfo),
 		peerListChan: peerListChan,
 		clients:      cmap.New(),
 		log:          logger,
+		doltDB:       db,
 	}
 
 	p2p.broadcastClient = &BroadcastClient{p2p: p2p}
