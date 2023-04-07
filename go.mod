@@ -1,4 +1,4 @@
-module github.com/protosio/testdolt
+module github.com/protosio/distributeddolt
 
 go 1.19
 
@@ -48,8 +48,10 @@ require (
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20221028234233-6b4d72a04fef // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
-	github.com/dolthub/go-mysql-server v0.14.1-0.20230329021806-7d5325285657 // indirect
-	github.com/dolthub/vitess v0.0.0-20230329002110-9cebb0262ead // indirect
+	github.com/dolthub/go-mysql-server v0.14.1-0.20230406230433-c90149d0693f // indirect
+	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
+	github.com/dolthub/swiss v0.1.0 // indirect
+	github.com/dolthub/vitess v0.0.0-20230406223939-011b5234783f // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/elastic/gosigar v0.14.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
@@ -162,7 +164,7 @@ require (
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.1.0 // indirect
 	golang.org/x/sync v0.1.0 // indirect
-	golang.org/x/sys v0.5.0 // indirect
+	golang.org/x/sys v0.6.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect
 	golang.org/x/time v0.1.0 // indirect

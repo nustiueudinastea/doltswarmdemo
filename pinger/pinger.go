@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
-	"github.com/protosio/testdolt/proto"
+	"github.com/protosio/distributeddolt/proto"
 )
 
 var _ proto.PingerServer = (*Server)(nil)

@@ -3,7 +3,7 @@ package p2p
 import (
 	"context"
 
-	"github.com/protosio/testdolt/proto"
+	"github.com/protosio/distributeddolt/proto"
 	"google.golang.org/grpc"
 )
 
