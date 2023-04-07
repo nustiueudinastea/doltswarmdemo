@@ -35,6 +35,7 @@ const (
 
 type Client struct {
 	proto.PingerClient
+	remotesapi.ChunkStoreServiceClient
 }
 
 type P2P struct {
@@ -116,7 +117,11 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 
 				// client
 				pingerClient := proto.NewPingerClient(conn)
-				client := &Client{pingerClient}
+				csClient := remotesapi.NewChunkStoreServiceClient(conn)
+				client := &Client{
+					pingerClient,
+					csClient,
+				}
 
 				// test connectivity with a ping
 				_, err = client.Ping(ctx, &proto.PingRequest{
@@ -163,7 +168,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	dbd := doltdb.HackDatasDatabaseFromDoltDB(p2p.doltDB)
 	cs := datas.ChunkStoreFromDatabase(dbd)
 	chunkStoreCache := dbserver.NewCSCache(cs.(remotesrv.RemoteSrvStore))
-	chunkStoreServer := dbserver.NewProtosChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache)
+	chunkStoreServer := dbserver.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache)
 
 	// register grpc servers
 	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())

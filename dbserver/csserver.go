@@ -38,7 +38,7 @@ var ErrUnimplemented = errors.New("unimplemented")
 
 const RepoPathField = "repo_path"
 
-type RemoteChunkStore struct {
+type ServerChunkStore struct {
 	HttpHost   string
 	httpScheme string
 
@@ -48,8 +48,8 @@ type RemoteChunkStore struct {
 	remotesapi.UnimplementedChunkStoreServiceServer
 }
 
-func NewProtosChunkStore(lgr *logrus.Entry, csCache DBCache) *RemoteChunkStore {
-	return &RemoteChunkStore{
+func NewServerChunkStore(lgr *logrus.Entry, csCache DBCache) *ServerChunkStore {
+	return &ServerChunkStore{
 		csCache: csCache,
 		bucket:  "",
 		lgr: lgr.WithFields(logrus.Fields{
@@ -73,7 +73,7 @@ func getRepoPath(req repoRequest) string {
 	panic("unexpected empty repo_path and nil repo_id")
 }
 
-func (rs *RemoteChunkStore) HasChunks(ctx context.Context, req *remotesapi.HasChunksRequest) (*remotesapi.HasChunksResponse, error) {
+func (rs *ServerChunkStore) HasChunks(ctx context.Context, req *remotesapi.HasChunksRequest) (*remotesapi.HasChunksResponse, error) {
 	logger := getReqLogger(rs.lgr, "HasChunks")
 	if err := ValidateHasChunksRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -115,11 +115,11 @@ func (rs *RemoteChunkStore) HasChunks(ctx context.Context, req *remotesapi.HasCh
 	return resp, nil
 }
 
-func (rs *RemoteChunkStore) GetDownloadLocations(ctx context.Context, req *remotesapi.GetDownloadLocsRequest) (*remotesapi.GetDownloadLocsResponse, error) {
+func (rs *ServerChunkStore) GetDownloadLocations(ctx context.Context, req *remotesapi.GetDownloadLocsRequest) (*remotesapi.GetDownloadLocsResponse, error) {
 	return nil, status.Error(codes.PermissionDenied, "HTTP download locations are not supported.")
 }
 
-func (rs *RemoteChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStoreService_StreamDownloadLocationsServer) error {
+func (rs *ServerChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStoreService_StreamDownloadLocationsServer) error {
 	ologger := getReqLogger(rs.lgr, "StreamDownloadLocations")
 	numMessages := 0
 	numHashes := 0
@@ -163,11 +163,11 @@ func (rs *RemoteChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStore
 			if err != nil {
 				return err
 			}
-			prefix, err = rs.getRelativeStorePath(cs)
-			if err != nil {
-				logger.WithError(err).Error("error getting file store path for chunk store")
-				return err
-			}
+			// prefix, err = rs.getRelativeStorePath(cs)
+			// if err != nil {
+			// 	logger.WithError(err).Error("error getting file store path for chunk store")
+			// 	return err
+			// }
 		}
 
 		hashes, _ := remotestorage.ParseByteSlices(req.ChunkHashes)
@@ -214,7 +214,7 @@ func (rs *RemoteChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStore
 	}
 }
 
-func (rs *RemoteChunkStore) getHost(md metadata.MD) string {
+func (rs *ServerChunkStore) getHost(md metadata.MD) string {
 	host := rs.HttpHost
 	if strings.HasPrefix(rs.HttpHost, ":") {
 		hosts := md.Get(":authority")
@@ -230,7 +230,7 @@ func (rs *RemoteChunkStore) getHost(md metadata.MD) string {
 	return host
 }
 
-func (rs *RemoteChunkStore) getDownloadUrl(md metadata.MD, path string) *url.URL {
+func (rs *ServerChunkStore) getDownloadUrl(md metadata.MD, path string) *url.URL {
 	host := rs.getHost(md)
 	return &url.URL{
 		Scheme: rs.httpScheme,
@@ -258,11 +258,11 @@ func parseTableFileDetails(req *remotesapi.GetUploadLocsRequest) []*remotesapi.T
 	return tfd
 }
 
-func (rs *RemoteChunkStore) GetUploadLocations(ctx context.Context, req *remotesapi.GetUploadLocsRequest) (*remotesapi.GetUploadLocsResponse, error) {
+func (rs *ServerChunkStore) GetUploadLocations(ctx context.Context, req *remotesapi.GetUploadLocsRequest) (*remotesapi.GetUploadLocsResponse, error) {
 	return nil, status.Error(codes.PermissionDenied, "this server only provides read-only access")
 }
 
-func (rs *RemoteChunkStore) Rebase(ctx context.Context, req *remotesapi.RebaseRequest) (*remotesapi.RebaseResponse, error) {
+func (rs *ServerChunkStore) Rebase(ctx context.Context, req *remotesapi.RebaseRequest) (*remotesapi.RebaseResponse, error) {
 	logger := getReqLogger(rs.lgr, "Rebase")
 	if err := ValidateRebaseRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -279,7 +279,7 @@ func (rs *RemoteChunkStore) Rebase(ctx context.Context, req *remotesapi.RebaseRe
 	return &remotesapi.RebaseResponse{}, nil
 }
 
-func (rs *RemoteChunkStore) Root(ctx context.Context, req *remotesapi.RootRequest) (*remotesapi.RootResponse, error) {
+func (rs *ServerChunkStore) Root(ctx context.Context, req *remotesapi.RootRequest) (*remotesapi.RootResponse, error) {
 	logger := getReqLogger(rs.lgr, "Root")
 	if err := ValidateRootRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -302,11 +302,11 @@ func (rs *RemoteChunkStore) Root(ctx context.Context, req *remotesapi.RootReques
 	return &remotesapi.RootResponse{RootHash: h[:]}, nil
 }
 
-func (rs *RemoteChunkStore) Commit(ctx context.Context, req *remotesapi.CommitRequest) (*remotesapi.CommitResponse, error) {
+func (rs *ServerChunkStore) Commit(ctx context.Context, req *remotesapi.CommitRequest) (*remotesapi.CommitResponse, error) {
 	return nil, status.Error(codes.PermissionDenied, "this server only provides read-only access")
 }
 
-func (rs *RemoteChunkStore) GetRepoMetadata(ctx context.Context, req *remotesapi.GetRepoMetadataRequest) (*remotesapi.GetRepoMetadataResponse, error) {
+func (rs *ServerChunkStore) GetRepoMetadata(ctx context.Context, req *remotesapi.GetRepoMetadataRequest) (*remotesapi.GetRepoMetadataResponse, error) {
 	logger := getReqLogger(rs.lgr, "GetRepoMetadata")
 	if err := ValidateGetRepoMetadataRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -333,7 +333,7 @@ func (rs *RemoteChunkStore) GetRepoMetadata(ctx context.Context, req *remotesapi
 	}, nil
 }
 
-func (rs *RemoteChunkStore) ListTableFiles(ctx context.Context, req *remotesapi.ListTableFilesRequest) (*remotesapi.ListTableFilesResponse, error) {
+func (rs *ServerChunkStore) ListTableFiles(ctx context.Context, req *remotesapi.ListTableFilesRequest) (*remotesapi.ListTableFilesResponse, error) {
 	logger := getReqLogger(rs.lgr, "ListTableFiles")
 	if err := ValidateListTableFilesRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
@@ -384,15 +384,16 @@ func (rs *RemoteChunkStore) ListTableFiles(ctx context.Context, req *remotesapi.
 func getTableFileInfo(
 	logger *logrus.Entry,
 	md metadata.MD,
-	rs *RemoteChunkStore,
+	rs *ServerChunkStore,
 	tableList []chunks.TableFile,
 	req *remotesapi.ListTableFilesRequest,
 	cs RemoteSrvStore,
 ) ([]*remotesapi.TableFileInfo, error) {
-	prefix, err := rs.getRelativeStorePath(cs)
-	if err != nil {
-		return nil, err
-	}
+	var prefix string
+	// prefix, err = rs.getRelativeStorePath(cs)
+	// if err != nil {
+	// 	return nil, err
+	// }
 	appendixTableFileInfo := make([]*remotesapi.TableFileInfo, 0)
 	for _, t := range tableList {
 		url := rs.getDownloadUrl(md, prefix+"/"+t.FileID())
@@ -407,15 +408,15 @@ func getTableFileInfo(
 }
 
 // AddTableFiles updates the remote manifest with new table files without modifying the root hash.
-func (rs *RemoteChunkStore) AddTableFiles(ctx context.Context, req *remotesapi.AddTableFilesRequest) (*remotesapi.AddTableFilesResponse, error) {
+func (rs *ServerChunkStore) AddTableFiles(ctx context.Context, req *remotesapi.AddTableFilesRequest) (*remotesapi.AddTableFilesResponse, error) {
 	return nil, status.Error(codes.PermissionDenied, "this server only provides read-only access")
 }
 
-func (rs *RemoteChunkStore) getStore(logger *logrus.Entry, repoPath string) (RemoteSrvStore, error) {
+func (rs *ServerChunkStore) getStore(logger *logrus.Entry, repoPath string) (RemoteSrvStore, error) {
 	return rs.getOrCreateStore(logger, repoPath, types.Format_Default.VersionString())
 }
 
-func (rs *RemoteChunkStore) getOrCreateStore(logger *logrus.Entry, repoPath, nbfVerStr string) (RemoteSrvStore, error) {
+func (rs *ServerChunkStore) getOrCreateStore(logger *logrus.Entry, repoPath, nbfVerStr string) (RemoteSrvStore, error) {
 	cs, err := rs.csCache.Get(repoPath, nbfVerStr)
 	if err != nil {
 		logger.WithError(err).Error("Failed to retrieve chunkstore")

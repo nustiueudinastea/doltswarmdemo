@@ -1,4 +1,4 @@
-package main
+package dbclient
 
 import (
 	"context"
@@ -9,10 +9,13 @@ import (
 	"github.com/dolthub/dolt/go/store/datas"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
+	"github.com/protosio/distributeddolt/p2p"
 )
 
 // ProtosFactory is a DBFactory implementation for creating Protos backed remotes
-type ProtosFactory struct{}
+type ProtosFactory struct {
+	p2p *p2p.P2P
+}
 
 func (fact ProtosFactory) PrepareDB(ctx context.Context, nbf *types.NomsBinFormat, urlObj *url.URL, params map[string]interface{}) error {
 	// nothing to prepare
@@ -23,7 +26,7 @@ func (fact ProtosFactory) PrepareDB(ctx context.Context, nbf *types.NomsBinForma
 func (fact ProtosFactory) CreateDB(ctx context.Context, nbf *types.NomsBinFormat, urlObj *url.URL, params map[string]interface{}) (datas.Database, types.ValueReadWriter, tree.NodeStore, error) {
 	var db datas.Database
 
-	cs, err := fact.newChunkStore(ctx, nbf, urlObj, params)
+	cs, err := fact.newChunkStore()
 
 	if err != nil {
 		return nil, nil, nil, err
@@ -36,10 +39,11 @@ func (fact ProtosFactory) CreateDB(ctx context.Context, nbf *types.NomsBinFormat
 	return db, vrw, ns, nil
 }
 
-func (fact ProtosFactory) newChunkStore(ctx context.Context, nbf *types.NomsBinFormat, urlObj *url.URL, params map[string]interface{}) (chunks.ChunkStore, error) {
-	cs, err := NewProtosChunkStore(ctx, nbf)
+func (fact ProtosFactory) newChunkStore() (chunks.ChunkStore, error) {
+
+	cs, err := NewRemoteChunkStore(fact.p2p)
 	if err != nil {
-		return nil, fmt.Errorf("could not access dolt url '%s': %w", urlObj.String(), err)
+		return nil, fmt.Errorf("could not create remote cs : %w", err)
 	}
 	return cs, err
 }

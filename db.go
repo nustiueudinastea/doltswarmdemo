@@ -16,6 +16,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	dd "github.com/dolthub/driver"
+	"github.com/protosio/distributeddolt/dbclient"
 	"github.com/segmentio/ksuid"
 )
 
@@ -77,7 +78,7 @@ func (db *DB) Open(dir string, commitListChan chan []Commit) error {
 	if !ok {
 		return fmt.Errorf("SQL driver is not Dolt type")
 	}
-	dbdriver.RegisterDBFactory("protos", &ProtosFactory{})
+	dbdriver.RegisterDBFactory("protos", &dbclient.ProtosFactory{})
 
 	db.i = dbi
 
