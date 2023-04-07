@@ -96,7 +96,6 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 					} else {
 						break
 					}
-
 				}
 
 				if p2p.host.Network().Connectedness(peer.ID) != network.Connected {
