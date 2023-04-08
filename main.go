@@ -88,6 +88,15 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 	return len(logLine), nil
 }
 
+func initDB(dbDir string) error {
+	err := db.Init(dbDir)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func p2pRun(dbDir string, port int) error {
 
 	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
@@ -156,6 +165,13 @@ func main() {
 				Usage: "starts p2p server",
 				Action: func(ctx *cli.Context) error {
 					return p2pRun(dbDir, port)
+				},
+			},
+			{
+				Name:  "init",
+				Usage: "initialises db",
+				Action: func(ctx *cli.Context) error {
+					return initDB(dbDir)
 				},
 			},
 			{

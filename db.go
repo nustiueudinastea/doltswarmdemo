@@ -57,6 +57,62 @@ func ensureDir(dirName string) error {
 	return err
 }
 
+func (db *DB) Init(dir string) error {
+	path, err := os.Getwd()
+	if err != nil {
+		return err
+	}
+
+	workingDir := fmt.Sprintf("%s/%s", path, dir)
+
+	err = ensureDir(workingDir)
+	if err != nil {
+		return err
+	}
+
+	db.i, err = sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, dbName))
+	if err != nil {
+		return fmt.Errorf("failed to open db: %w", err)
+	}
+
+	_, err = db.i.Query("CREATE DATABASE test;")
+	if err != nil {
+		return fmt.Errorf("failed to create db: %w", err)
+	}
+
+	err = db.query("SET @@dolt_transaction_commit = 1;")
+	if err != nil {
+		return fmt.Errorf("failed to set transaction commit: %w", err)
+	}
+
+	_, err = db.i.Query("USE test;")
+	if err != nil {
+		return fmt.Errorf("failed to use db: %w", err)
+	}
+
+	query := `CREATE TABLE IF NOT EXISTS protos(
+		id varchar(256) PRIMARY KEY,
+		name varchar(512)
+	);`
+
+	err = db.query(query)
+	if err != nil {
+		return fmt.Errorf("failed to create table: %w", err)
+	}
+
+	err = db.Insert("main", "first")
+	if err != nil {
+		return fmt.Errorf("failed to insert init commit: %w", err)
+	}
+
+	_, err = db.i.Query("CALL DOLT_REMOTE('add','origin','protos://test');")
+	if err != nil {
+		return fmt.Errorf("failed to add remote db: %w", err)
+	}
+
+	return db.i.Close()
+}
+
 func (db *DB) Open(dir string, commitListChan chan []Commit) error {
 	path, err := os.Getwd()
 	if err != nil {
@@ -70,34 +126,22 @@ func (db *DB) Open(dir string, commitListChan chan []Commit) error {
 		return err
 	}
 
-	dbi, err := sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, dbName))
+	db.i, err = sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, dbName))
 	if err != nil {
 		return fmt.Errorf("failed to open db: %w", err)
 	}
-	dbdriver, ok := dbi.Driver().(*dd.DoltDriver)
+	dbdriver, ok := db.i.Driver().(*dd.DoltDriver)
 	if !ok {
 		return fmt.Errorf("SQL driver is not Dolt type")
 	}
 	dbdriver.RegisterDBFactory("protos", &dbclient.ProtosFactory{})
 
-	db.i = dbi
-
-	_, err = db.i.Query("CREATE DATABASE IF NOT EXISTS test;")
-	if err != nil {
-		return fmt.Errorf("failed to create db: %w", err)
-	}
-
 	_, err = db.i.Query("USE test;")
 	if err != nil {
-		return fmt.Errorf("failed to use db: %w", err)
+		return fmt.Errorf("failed to use db: %w. Run init", err)
 	}
 
-	_, err = db.i.Query("CALL DOLT_REMOTE('add','origin','protos://test');")
-	if err != nil {
-		return fmt.Errorf("failed to add remote db: %w", err)
-	}
-
-	// db.PrintQueryResult("CALL DOLT_PULL('origin', 'main');")
+	db.PrintQueryResult("CALL DOLT_PULL('origin', 'main');")
 
 	// if err != nil {
 	// 	if !strings.Contains(err.Error(), "database not found") {
@@ -131,28 +175,13 @@ func (db *DB) Open(dir string, commitListChan chan []Commit) error {
 
 	// }
 
-	err = db.query("SET @@dolt_transaction_commit = 1;")
-	if err != nil {
-		return fmt.Errorf("failed to set transaction commit: %w", err)
-	}
-
-	query := `CREATE TABLE IF NOT EXISTS protos(
-		id varchar(256) PRIMARY KEY,
-		name varchar(512)
-	);`
-
-	err = db.query(query)
-	if err != nil {
-		return fmt.Errorf("failed to create table: %w", err)
-	}
-
 	commits, err := db.GetAllCommits()
 	if err != nil {
 		return fmt.Errorf("failed to get commits: %w", err)
 	}
 
 	if len(commits) == 0 {
-		db.Insert("main", "first")
+		return fmt.Errorf("no commits: run init")
 	}
 
 	db.commitListChan = commitListChan
