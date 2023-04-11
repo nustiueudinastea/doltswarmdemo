@@ -64,6 +64,18 @@ func (p2p *P2P) GetClient(id peer.ID) (*Client, error) {
 	return client, nil
 }
 
+func (p2p *P2P) GetAllClients() map[string]*Client {
+	clients := make(map[string]*Client)
+	for clientTuble := range p2p.clients.IterBuffered() {
+		client, ok := clientTuble.Val.(*Client)
+		if !ok {
+			p2p.log.Warnf("Client %s not found", clientTuble.Key)
+		}
+		clients[clientTuble.Key] = client
+	}
+	return clients
+}
+
 func (p2p *P2P) GetBroadcastClient() *BroadcastClient {
 	return p2p.broadcastClient
 }

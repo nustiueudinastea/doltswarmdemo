@@ -4,17 +4,19 @@ import (
 	"context"
 	"fmt"
 
+	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/protosio/distributeddolt/p2p"
 )
 
-func NewRemoteChunkStore(p2p *p2p.P2P) (*RemoteChunkStore, error) {
-	return &RemoteChunkStore{p2p: p2p}, nil
+func NewRemoteChunkStore(p2p *p2p.P2P, localCS chunks.ChunkStore) (*RemoteChunkStore, error) {
+	return &RemoteChunkStore{p2p: p2p, localCS: localCS}, nil
 }
 
 type RemoteChunkStore struct {
-	p2p *p2p.P2P
+	p2p     *p2p.P2P
+	localCS chunks.ChunkStore
 }
 
 func (rcs *RemoteChunkStore) Get(ctx context.Context, h hash.Hash) (chunks.Chunk, error) {
@@ -38,7 +40,21 @@ func (rcs *RemoteChunkStore) Put(ctx context.Context, c chunks.Chunk, getAddrs c
 }
 
 func (rcs *RemoteChunkStore) Version() string {
-	return "0"
+	clients := rcs.p2p.GetAllClients()
+
+	if len(clients) == 0 {
+		return rcs.localCS.Version()
+	}
+
+	responses := map[string]*remotesapi.GetRepoMetadataResponse{}
+	for id, client := range clients {
+		resp, err := client.ChunkStoreServiceClient.GetRepoMetadata(context.Background(), &remotesapi.GetRepoMetadataRequest{})
+		if err != nil {
+			fmt.Printf("Error getting repo metadata from client %s: %s, skipping\n", id, err)
+		}
+		responses[id] = resp
+	}
+	return rcs.localCS.Version()
 }
 
 func (rcs *RemoteChunkStore) Rebase(ctx context.Context) error {

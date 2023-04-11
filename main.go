@@ -6,17 +6,19 @@ import (
 	"os"
 
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/protosio/distributeddolt/db"
 	"github.com/protosio/distributeddolt/p2p"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
 
-var db = DB{}
+var dbi *db.DB
 var log = logrus.New()
 var dbDir string
+var commitListChan = make(chan []db.Commit, 100)
 
 // func createBranch(name string) error {
-// 	ddb, err := db.GetDoltDB()
+// 	ddb, err := dbi.GetDoltDB()
 // 	if err != nil {
 // 		return err
 // 	}
@@ -26,30 +28,30 @@ var dbDir string
 // 		return err
 // 	}
 
-// 	commit, err := db.GetLastCommit()
+// 	commit, err := dbi.GetLastCommit()
 // 	if err != nil {
 // 		return err
 // 	}
 
 // 	ctx := context.Background()
-// 	commitVal, err := ddb.ReadCommit(ctx, hash.Parse(commit.Hash))
+// 	commitVal, err := ddbi.ReadCommit(ctx, hash.Parse(commit.Hash))
 // 	if err != nil {
 // 		log.Fatalf("failed to retrieve commit value: %s", err.Error())
 // 	}
 
-// 	return ddb.NewBranchAtCommit(ctx, dref, commitVal)
+// 	return ddbi.NewBranchAtCommit(ctx, dref, commitVal)
 // }
 
 // func showData(branch string) {
-// 	db.PrintQueryResult(fmt.Sprintf("SELECT * FROM `%s/%s`.protos;", dbName, branch))
+// 	dbi.PrintQueryResult(fmt.Sprintf("SELECT * FROM `%s/%s`.protos;", dbName, branch))
 // }
 
 func listCommits(branch string) {
-	query(fmt.Sprintf("select * from `%s/%s`.dolt_diff;", dbName, branch))
+	query(fmt.Sprintf("select * from `%s/%s`.dolt_diff;", db.Name, branch))
 }
 
 func listBranches() {
-	ddb, err := db.GetDoltDB()
+	ddb, err := dbi.GetDoltDB()
 	if err != nil {
 		log.Fatalf(err.Error())
 	}
@@ -63,18 +65,11 @@ func listBranches() {
 }
 
 func query(query string) {
-	commitListChan := make(chan []Commit, 100)
-	err := db.Open(dbDir, commitListChan)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer db.Close()
-
-	db.PrintQueryResult(query)
+	dbi.PrintQueryResult(query)
 }
 
 // func insert(branch string, data string) error {
-// 	return db.Insert(branch, data)
+// 	return dbi.Insert(branch, data)
 // }
 
 type EventWriter struct {
@@ -89,7 +84,7 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 }
 
 func initDB(dbDir string) error {
-	err := db.Init(dbDir)
+	err := dbi.Init()
 	if err != nil {
 		return err
 	}
@@ -102,14 +97,7 @@ func p2pRun(dbDir string, port int) error {
 	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 	log.SetOutput(ew)
 
-	commitListChan := make(chan []Commit, 100)
-	err := db.Open(dbDir, commitListChan)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	doltDB, err := db.GetDoltDB()
+	doltDB, err := dbi.GetDoltDB()
 	if err != nil {
 		return err
 	}
@@ -185,42 +173,22 @@ func main() {
 		},
 	}
 
+	app.Before = func(ctx *cli.Context) error {
+		dbi = db.New(dbDir, log)
+		err := dbi.Open(commitListChan)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		return nil
+	}
+
+	app.After = func(ctx *cli.Context) error {
+		return dbi.Close()
+	}
+
 	if err := app.Run(os.Args); err != nil {
 		fmt.Println(err)
 	}
-
-	// ddb, err := db.GetDoltDB()
-	// if err != nil {
-	// 	log.Fatalf("failed to retrieve dolt db: %s", err.Error())
-	// }
-
-	// commitVal, err := ddb.ReadCommit(ctx, hash.Parse(commit.Hash))
-	// if err != nil {
-	// 	log.Fatalf("failed to retrieve commit value: %s", err.Error())
-	// }
-
-	// hash, err := commitVal.HashOf()
-	// if err != nil {
-	// 	log.Fatalf("failed to retrieve commit hash: %s", err.Error())
-	// }
-
-	// cm, err := commitVal.GetCommitMeta(ctx)
-	// if err != nil {
-	// 	log.Fatalf("failed to retrieve commit meta: %s", err.Error())
-	// }
-
-	// err = ddb.SetHead(ctx, headRefs[0], hash)
-	// if err != nil {
-	// 	log.Fatalf("failed to set head at commit: %s", err.Error())
-	// }
-
-	// ddb.CommitWithWorkingSet()
-
-	// ddb.CommitRoot()
-
-	// _, err = ddb.NewPendingCommit()
-	// if err != nil {
-	// 	log.Fatalf("failed to create new commit: %s", err.Error())
-	// }
 
 }

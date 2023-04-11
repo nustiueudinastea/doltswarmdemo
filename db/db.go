@@ -1,4 +1,4 @@
-package main
+package db
 
 import (
 	"bytes"
@@ -15,9 +15,12 @@ import (
 	"github.com/bokwoon95/sq"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/store/datas"
 	dd "github.com/dolthub/driver"
 	"github.com/protosio/distributeddolt/dbclient"
+	"github.com/protosio/distributeddolt/p2p"
 	"github.com/segmentio/ksuid"
+	"github.com/sirupsen/logrus"
 )
 
 type Commit struct {
@@ -31,12 +34,15 @@ type Commit struct {
 	SchemaChange bool
 }
 
-var dbName = "test"
+var Name = "test"
 
 type DB struct {
 	i              *sql.DB
 	stopper        func() error
 	commitListChan chan []Commit
+	p2p            *p2p.P2P
+	workingDir     string
+	log            *logrus.Logger
 }
 
 func ensureDir(dirName string) error {
@@ -57,20 +63,29 @@ func ensureDir(dirName string) error {
 	return err
 }
 
-func (db *DB) Init(dir string) error {
+func New(dir string, logger *logrus.Logger) *DB {
+	db := &DB{
+		workingDir: dir,
+		log:        logger,
+	}
+
+	return db
+}
+
+func (db *DB) Init() error {
 	path, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 
-	workingDir := fmt.Sprintf("%s/%s", path, dir)
+	workingDir := fmt.Sprintf("%s/%s", path, db.workingDir)
 
 	err = ensureDir(workingDir)
 	if err != nil {
 		return err
 	}
 
-	db.i, err = sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, dbName))
+	db.i, err = sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, Name))
 	if err != nil {
 		return fmt.Errorf("failed to open db: %w", err)
 	}
@@ -113,67 +128,27 @@ func (db *DB) Init(dir string) error {
 	return db.i.Close()
 }
 
-func (db *DB) Open(dir string, commitListChan chan []Commit) error {
+func (db *DB) Open(commitListChan chan []Commit) error {
 	path, err := os.Getwd()
 	if err != nil {
 		return err
 	}
 
-	workingDir := fmt.Sprintf("%s/%s", path, dir)
-
+	workingDir := fmt.Sprintf("%s/%s", path, db.workingDir)
 	err = ensureDir(workingDir)
 	if err != nil {
 		return err
 	}
 
-	db.i, err = sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, dbName))
+	db.i, err = sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, Name))
 	if err != nil {
 		return fmt.Errorf("failed to open db: %w", err)
 	}
-	dbdriver, ok := db.i.Driver().(*dd.DoltDriver)
-	if !ok {
-		return fmt.Errorf("SQL driver is not Dolt type")
-	}
-	dbdriver.RegisterDBFactory("protos", &dbclient.ProtosFactory{})
 
 	_, err = db.i.Query("USE test;")
 	if err != nil {
 		return fmt.Errorf("failed to use db: %w. Run init", err)
 	}
-
-	db.PrintQueryResult("CALL DOLT_PULL('origin', 'main');")
-
-	// if err != nil {
-	// 	if !strings.Contains(err.Error(), "database not found") {
-	// 		return fmt.Errorf("failed to use db: %w", err)
-	// 	}
-
-	// 	mre, err := db.GetDoltMultiRepoEnv()
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to retrieve db env: %w", err)
-	// 	}
-
-	// 	dbDir := workingDir + "/test"
-	// 	err = ensureDir(dbDir)
-	// 	if err != nil {
-	// 		return err
-	// 	}
-
-	// 	localFS, err := filesys.LocalFilesysWithWorkingDir(dbDir)
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to create local fs for db env: %w", err)
-	// 	}
-
-	// 	fmt.Println(doltdb.LocalDirDoltDB)
-	// 	newEnv := env.Load(context.TODO(), env.GetCurrentUserHomeDir, localFS, doltdb.LocalDirDoltDB, "test")
-	// 	err = newEnv.InitRepoWithTime(context.TODO(), types.Format_DOLT_1, "test", "alex@giurgiu.io", "main", time.Date(2022, 11, 1, 0, 0, 0, 0, time.UTC))
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to init db env: %w", err)
-	// 	}
-
-	// 	mre.AddEnv("test", newEnv)
-
-	// }
 
 	commits, err := db.GetAllCommits()
 	if err != nil {
@@ -195,6 +170,30 @@ func (db *DB) Close() error {
 	return db.i.Close()
 }
 
+func (db *DB) EnableP2P(p2p *p2p.P2P) error {
+	db.p2p = p2p
+
+	dbdriver, ok := db.i.Driver().(*dd.DoltDriver)
+	if !ok {
+		return fmt.Errorf("SQL driver is not Dolt type")
+	}
+
+	doltDB, err := db.GetDoltDB()
+	if err != nil {
+		return fmt.Errorf("failed to open db: %w", err)
+	}
+	dbd := doltdb.HackDatasDatabaseFromDoltDB(doltDB)
+	cs := datas.ChunkStoreFromDatabase(dbd)
+	dbdriver.RegisterDBFactory("protos", &dbclient.CustomFactory{P2P: db.p2p, LocalCS: cs})
+
+	return nil
+}
+
+func (db *DB) Sync() error {
+	db.PrintQueryResult("CALL DOLT_PULL('origin', 'main');")
+	return nil
+}
+
 func (db *DB) query(query string) error {
 	rows, err := db.i.Query(query)
 	if err != nil {
@@ -210,7 +209,7 @@ func (db *DB) Insert(branch string, data string) error {
 		return fmt.Errorf("failed to create uid: %w", err)
 	}
 
-	queryString := fmt.Sprintf("INSERT INTO `%s/%s`.protos (id, name) VALUES {};", dbName, branch)
+	queryString := fmt.Sprintf("INSERT INTO `%s/%s`.protos (id, name) VALUES {};", Name, branch)
 	_, err = sq.Exec(db.i, sq.
 		Queryf(queryString, sq.RowValue{
 			uid.String(), data,
@@ -221,7 +220,7 @@ func (db *DB) Insert(branch string, data string) error {
 		return fmt.Errorf("failed to save record: %w", err)
 	}
 
-	db.query(fmt.Sprintf("SELECT * FROM `%s/%s`.protos;", dbName, branch))
+	db.query(fmt.Sprintf("SELECT * FROM `%s/%s`.protos;", Name, branch))
 
 	return nil
 }
@@ -232,14 +231,14 @@ func (db *DB) PrintQueryResult(query string) {
 	fmt.Println(rows)
 	fmt.Println(err)
 	if err != nil {
-		log.Fatalf("query '%s' failed: %s", query, err.Error())
+		db.log.Fatalf("query '%s' failed: %s", query, err.Error())
 	}
 	defer rows.Close()
 
 	fmt.Println("results:")
 	err = printRows(rows)
 	if err != nil {
-		log.Fatalf("failed to print results for query '%s': %s", query, err.Error())
+		db.log.Fatalf("failed to print results for query '%s': %s", query, err.Error())
 	}
 
 	fmt.Println()
@@ -399,18 +398,18 @@ func (db *DB) commitUpdater() func() error {
 	timer := time.NewTimer(1 * time.Second)
 	stopSignal := make(chan struct{})
 	go func() {
-		log.Info("Starting commit updater")
+		db.log.Info("Starting commit updater")
 		for {
 			select {
 			case <-timer.C:
 				commits, err := db.GetAllCommits()
 				if err != nil {
-					log.Error("failed to retrieve commits")
+					db.log.Error("failed to retrieve commits")
 					continue
 				}
 				db.commitListChan <- commits
 			case <-stopSignal:
-				log.Info("Stopping commit updater")
+				db.log.Info("Stopping commit updater")
 				return
 			}
 		}

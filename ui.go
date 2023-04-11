@@ -3,10 +3,11 @@ package main
 import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
+	"github.com/protosio/distributeddolt/db"
 	"github.com/rivo/tview"
 )
 
-func uiUpdate(app *tview.Application, peerListView *tview.List, commitTreeRoot *tview.TreeNode, textView *tview.TextView, peerListChan chan peer.IDSlice, commitListChan chan []Commit, eventChan chan []byte) func() error {
+func uiUpdate(app *tview.Application, peerListView *tview.List, commitTreeRoot *tview.TreeNode, textView *tview.TextView, peerListChan chan peer.IDSlice, commitListChan chan []db.Commit, eventChan chan []byte) func() error {
 	stopSignal := make(chan struct{})
 	go func() {
 		log.Info("Starting UI updater")
@@ -44,7 +45,7 @@ func uiUpdate(app *tview.Application, peerListView *tview.List, commitTreeRoot *
 	return stopper
 }
 
-func createUI(peerListChan chan peer.IDSlice, commitListChan chan []Commit, eventChan chan []byte) *tview.Application {
+func createUI(peerListChan chan peer.IDSlice, commitListChan chan []db.Commit, eventChan chan []byte) *tview.Application {
 	var app = tview.NewApplication()
 	var flex = tview.NewFlex()
 
