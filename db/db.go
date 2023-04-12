@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"reflect"
 	"strconv"
@@ -228,20 +229,16 @@ func (db *DB) Insert(branch string, data string) error {
 func (db *DB) PrintQueryResult(query string) {
 	fmt.Println("query:", query)
 	rows, err := db.i.Query(query)
-	fmt.Println(rows)
-	fmt.Println(err)
 	if err != nil {
-		db.log.Fatalf("query '%s' failed: %s", query, err.Error())
+		log.Fatalf("query '%s' failed: %s", query, err.Error())
 	}
 	defer rows.Close()
 
 	fmt.Println("results:")
 	err = printRows(rows)
 	if err != nil {
-		db.log.Fatalf("failed to print results for query '%s': %s", query, err.Error())
+		log.Fatalf("failed to print results for query '%s': %s", query, err.Error())
 	}
-
-	fmt.Println()
 }
 
 func commitMapper(row *sq.Row) (Commit, error) {
