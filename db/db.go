@@ -199,7 +199,11 @@ func (db *DB) Init() error {
 }
 
 func (db *DB) Sync() error {
-	return db.Query("CALL DOLT_PULL('origin', 'main');", true)
+	err := db.Query("CALL DOLT_PULL('origin', 'main');", true)
+	if err != nil {
+		return fmt.Errorf("failed to sync db: %w", err)
+	}
+	return nil
 }
 
 func (db *DB) GetDoltDB() (*doltdb.DoltDB, error) {
