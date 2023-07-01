@@ -1,6 +1,11 @@
 package db
 
-import "github.com/bokwoon95/sq"
+import (
+	"errors"
+	"os"
+
+	"github.com/bokwoon95/sq"
+)
 
 func commitMapper(row *sq.Row) (Commit, error) {
 	commit := Commit{
@@ -14,4 +19,22 @@ func commitMapper(row *sq.Row) (Commit, error) {
 		SchemaChange: row.Bool("schema_change"),
 	}
 	return commit, nil
+}
+
+func ensureDir(dirName string) error {
+	err := os.Mkdir(dirName, os.ModePerm)
+	if err == nil {
+		return nil
+	}
+	if os.IsExist(err) {
+		info, err := os.Stat(dirName)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			return errors.New("path exists but is not a directory")
+		}
+		return nil
+	}
+	return err
 }

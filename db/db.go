@@ -3,10 +3,8 @@ package db
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"time"
 
 	"github.com/bokwoon95/sq"
@@ -46,24 +44,6 @@ type DB struct {
 	sqlCtx         *doltSQL.Context
 	workingDir     string
 	log            *logrus.Logger
-}
-
-func ensureDir(dirName string) error {
-	err := os.Mkdir(dirName, os.ModePerm)
-	if err == nil {
-		return nil
-	}
-	if os.IsExist(err) {
-		info, err := os.Stat(dirName)
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			return errors.New("path exists but is not a directory")
-		}
-		return nil
-	}
-	return err
 }
 
 func New(dir string, commitListChan chan []Commit, logger *logrus.Logger) *DB {
@@ -123,10 +103,8 @@ func (db *DB) Open() error {
 		return fmt.Errorf("failed to open db: %w", err)
 	}
 
-	fmt.Println("----- 1 ------")
-
 	ctx := context.Background()
-	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, workingDirFS, "file://"+workingDir, "1.6.1")
+	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, workingDirFS, "file://"+workingDir+"/"+dbName, "1.6.1")
 	err = dEnv.Config.WriteableConfig().SetStrings(map[string]string{
 		env.UserEmailKey: "alex@giurgiu.io",
 		env.UserNameKey:  "Alex Giurgiu",
@@ -139,8 +117,6 @@ func (db *DB) Open() error {
 	if err != nil {
 		return fmt.Errorf("failed to load database names")
 	}
-
-	fmt.Println("----- 2 ------")
 
 	sqleConfig := &engine.SqlEngineConfig{
 		IsReadOnly:              false,
@@ -167,9 +143,20 @@ func (db *DB) Open() error {
 		return err
 	}
 
-	fmt.Println("----- 3 ------")
-
 	db.sqld = sql.OpenDB(&Connector{driver: &doltDriver{conn: &dd.DoltConn{DataSource: &dd.DoltDataSource{}, SE: db.sqle, GmsCtx: db.sqlCtx}}})
+
+	if dbEnv := db.mrEnv.GetEnv(dbName); dbEnv != nil {
+		err = dbEnv.InitializeRepoState(ctx, "main")
+		if err != nil {
+			return fmt.Errorf("failed to init repo state: %w", err)
+		}
+
+		r := env.NewRemote("origin", fmt.Sprintf("protos://%s", dbName), map[string]string{})
+		err = dbEnv.AddRemote(r)
+		if err != nil {
+			return fmt.Errorf("failed to add remote: %w", err)
+		}
+	}
 
 	db.stopper = db.commitUpdater()
 
@@ -189,17 +176,10 @@ func (db *DB) Close() error {
 }
 
 func (db *DB) Init() error {
-
-	// ctx := context.Background()
-
-	fmt.Println("----- 4 ------")
-
 	err := db.Query(fmt.Sprintf("CREATE DATABASE %s;", dbName), true)
 	if err != nil {
 		return fmt.Errorf("failed to create db: %w", err)
 	}
-
-	fmt.Println("----- 5 ------")
 
 	err = db.mrEnv.Iter(func(name string, dEnv *env.DoltEnv) (stop bool, err error) {
 		fmt.Println(name)
@@ -208,19 +188,6 @@ func (db *DB) Init() error {
 	if err != nil {
 		return fmt.Errorf("failed to iterate database names")
 	}
-
-	fmt.Println("----- 6 ------")
-
-	// err = dEnv.InitializeRepoState(ctx, "main")
-	// if err != nil {
-	// 	return fmt.Errorf("failed to init repo state: %w", err)
-	// }
-
-	// r := env.NewRemote("origin", fmt.Sprintf("protos://%s", dbName), map[string]string{})
-	// err = dEnv.AddRemote(r)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to add remote: %w", err)
-	// }
 
 	err = db.Query(fmt.Sprintf("USE %s;", dbName), false)
 	if err != nil {
