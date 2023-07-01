@@ -199,7 +199,12 @@ func (db *DB) Init() error {
 }
 
 func (db *DB) Sync() error {
-	err := db.Query("CALL DOLT_PULL('origin', 'main');", true)
+	err := db.Query(fmt.Sprintf("USE %s;", dbName), false)
+	if err != nil {
+		return fmt.Errorf("failed to use db: %w", err)
+	}
+
+	err = db.Query("CALL DOLT_PULL('origin', 'main');", true)
 	if err != nil {
 		return fmt.Errorf("failed to sync db: %w", err)
 	}
