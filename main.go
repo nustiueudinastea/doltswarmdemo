@@ -125,7 +125,7 @@ func p2pRun(dbDir string, port int) error {
 		return err
 	}
 
-	err = dbi.EnableP2P(p2pmgr)
+	err = dbi.EnableSync(p2pmgr)
 	if err != nil {
 		return err
 	}

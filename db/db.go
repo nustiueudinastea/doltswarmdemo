@@ -9,12 +9,15 @@ import (
 
 	"github.com/bokwoon95/sq"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/engine"
+	"github.com/dolthub/dolt/go/libraries/doltcore/dbfactory"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/binlogreplication"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/dolt/go/store/datas"
 	dd "github.com/dolthub/driver"
 	doltSQL "github.com/dolthub/go-mysql-server/sql"
+	"github.com/protosio/distributeddolt/dbclient"
 	"github.com/protosio/distributeddolt/p2p"
 	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
@@ -199,6 +202,10 @@ func (db *DB) Init() error {
 }
 
 func (db *DB) Sync() error {
+	if db.p2p == nil {
+		return fmt.Errorf("p2p sync not initialized")
+	}
+
 	err := db.Query(fmt.Sprintf("USE %s;", dbName), false)
 	if err != nil {
 		return fmt.Errorf("failed to use db: %w", err)
@@ -220,21 +227,15 @@ func (db *DB) GetDoltDB() (*doltdb.DoltDB, error) {
 	return testenv.DoltDB, nil
 }
 
-func (db *DB) EnableP2P(p2p *p2p.P2P) error {
+func (db *DB) EnableSync(p2p *p2p.P2P) error {
 	db.p2p = p2p
-
-	// dbdriver, ok := db.i.Driver().(*dd.DoltDriver)
-	// if !ok {
-	// 	return fmt.Errorf("SQL driver is not Dolt type")
-	// }
-
-	// doltDB, err := db.GetDoltDB()
-	// if err != nil {
-	// 	return fmt.Errorf("failed to open db: %w", err)
-	// }
-	// dbd := doltdb.HackDatasDatabaseFromDoltDB(doltDB)
-	// cs := datas.ChunkStoreFromDatabase(dbd)
-	// // dbdriver.RegisterDBFactory("protos", &dbclient.CustomFactory{P2P: db.p2p, LocalCS: cs})
+	doltDB, err := db.GetDoltDB()
+	if err != nil {
+		return fmt.Errorf("failed to open db: %w", err)
+	}
+	dbd := doltdb.HackDatasDatabaseFromDoltDB(doltDB)
+	cs := datas.ChunkStoreFromDatabase(dbd)
+	dbfactory.RegisterFactory("protos", &dbclient.CustomFactory{P2P: db.p2p, LocalCS: cs})
 
 	return nil
 }
