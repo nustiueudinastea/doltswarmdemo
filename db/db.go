@@ -181,14 +181,6 @@ func (db *DB) Init() error {
 		return fmt.Errorf("failed to create db: %w", err)
 	}
 
-	err = db.mrEnv.Iter(func(name string, dEnv *env.DoltEnv) (stop bool, err error) {
-		fmt.Println(name)
-		return false, nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to iterate database names")
-	}
-
 	err = db.Query(fmt.Sprintf("USE %s;", dbName), false)
 	if err != nil {
 		return fmt.Errorf("failed to use db: %w", err)
