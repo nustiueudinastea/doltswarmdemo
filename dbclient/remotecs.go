@@ -32,22 +32,37 @@ func (rcs *RemoteChunkStore) Get(ctx context.Context, h hash.Hash) (chunks.Chunk
 
 func (rcs *RemoteChunkStore) GetMany(ctx context.Context, hashes hash.HashSet, found func(context.Context, *chunks.Chunk)) error {
 	fmt.Println("calling GetMany")
-	return nil
+	clients := rcs.p2p.GetAllClients()
+	if len(clients) == 0 {
+		return rcs.localCS.GetMany(ctx, hashes, found)
+	}
+
+	return rcs.localCS.GetMany(ctx, hashes, found)
 }
 
 func (rcs *RemoteChunkStore) Has(ctx context.Context, h hash.Hash) (bool, error) {
 	fmt.Println("calling Has")
-	return false, nil
+	clients := rcs.p2p.GetAllClients()
+	if len(clients) == 0 {
+		return rcs.localCS.Has(ctx, h)
+	}
+
+	return rcs.localCS.Has(ctx, h)
 }
 
 func (rcs *RemoteChunkStore) HasMany(ctx context.Context, hashes hash.HashSet) (hash.HashSet, error) {
 	fmt.Println("calling HasMany")
-	return make(hash.HashSet), nil
+	clients := rcs.p2p.GetAllClients()
+	if len(clients) == 0 {
+		return rcs.localCS.HasMany(ctx, hashes)
+	}
+
+	return rcs.localCS.HasMany(ctx, hashes)
 }
 
 func (rcs *RemoteChunkStore) Put(ctx context.Context, c chunks.Chunk, getAddrs chunks.GetAddrsCb) error {
 	fmt.Println("calling Put")
-	return nil
+	return fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) Version() string {
@@ -60,7 +75,7 @@ func (rcs *RemoteChunkStore) Version() string {
 
 	responses := map[string]*remotesapi.GetRepoMetadataResponse{}
 	for id, client := range clients {
-		resp, err := client.ChunkStoreServiceClient.GetRepoMetadata(context.Background(), &remotesapi.GetRepoMetadataRequest{})
+		resp, err := client.GetRepoMetadata(context.Background(), &remotesapi.GetRepoMetadataRequest{})
 		if err != nil {
 			fmt.Printf("Error getting repo metadata from client %s: %s, skipping\n", id, err)
 		}
@@ -71,8 +86,32 @@ func (rcs *RemoteChunkStore) Version() string {
 
 func (rcs *RemoteChunkStore) Rebase(ctx context.Context) error {
 	fmt.Println("calling Rebase")
-	return nil
+	return fmt.Errorf("not supported")
 }
+
+// func (rcs *RemoteChunkStore) loadRoot(ctx context.Context) error {
+// 	clients := rcs.p2p.GetAllClients()
+// 	if len(clients) == 0 {
+// 		return fmt.Errorf("failed to load root, no clients")
+// 	}
+
+// 	id, token := rcs.getRepoId()
+// 	req := &remotesapi.RootRequest{RepoId: id, RepoToken: token, RepoPath: "/"}
+// 	responses := map[string]*remotesapi.RootResponse{}
+// 	for id, client := range clients {
+// 		resp, err := client.Root(context.Background(), req)
+// 		if err != nil {
+// 			fmt.Printf("Error getting repo metadata from client %s: %s, skipping\n", id, err)
+// 		}
+// 		responses[id] = resp
+// 	}
+
+// 	if resp.RepoToken != "" {
+// 		dcs.repoToken.Store(resp.RepoToken)
+// 	}
+// 	dcs.root = hash.New(resp.RootHash)
+// 	return nil
+// }
 
 func (rcs *RemoteChunkStore) Root(ctx context.Context) (hash.Hash, error) {
 	fmt.Println("calling Root")
@@ -81,7 +120,15 @@ func (rcs *RemoteChunkStore) Root(ctx context.Context) (hash.Hash, error) {
 		return rcs.localCS.Root(ctx)
 	}
 
-	return rcs.localCS.Root(ctx)
+	for _, client := range clients {
+		resp, err := client.Root(context.Background(), &remotesapi.RootRequest{})
+		if err != nil {
+			return hash.Hash{}, err
+		}
+		return hash.New(resp.RootHash), nil
+	}
+
+	return hash.Hash{}, fmt.Errorf("no clients")
 }
 
 func (rcs *RemoteChunkStore) Commit(ctx context.Context, current, last hash.Hash) (bool, error) {
@@ -104,60 +151,32 @@ func (rcs *RemoteChunkStore) Close() error {
 	return nil
 }
 
+//
 // TableFileStore implementation
+//
 
 func (rcs *RemoteChunkStore) Sources(ctx context.Context) (hash.Hash, []chunks.TableFile, []chunks.TableFile, error) {
-	tfs, ok := rcs.localCS.(chunks.TableFileStore)
-	if !ok {
-		return hash.Hash{}, nil, nil, fmt.Errorf("local chunk store does not implement TableFileStore")
-	}
-
-	return tfs.Sources(ctx)
+	return hash.Hash{}, nil, nil, fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) Size(ctx context.Context) (uint64, error) {
-	tfs, ok := rcs.localCS.(chunks.TableFileStore)
-	if !ok {
-		return 0, fmt.Errorf("local chunk store does not implement TableFileStore")
-	}
-
-	return tfs.Size(ctx)
+	return 0, fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) WriteTableFile(ctx context.Context, fileId string, numChunks int, contentHash []byte, getRd func() (io.ReadCloser, uint64, error)) error {
-	tfs, ok := rcs.localCS.(chunks.TableFileStore)
-	if !ok {
-		return fmt.Errorf("local chunk store does not implement TableFileStore")
-	}
-
-	return tfs.WriteTableFile(ctx, fileId, numChunks, contentHash, getRd)
+	return fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) AddTableFilesToManifest(ctx context.Context, fileIdToNumChunks map[string]int) error {
-	tfs, ok := rcs.localCS.(chunks.TableFileStore)
-	if !ok {
-		return fmt.Errorf("local chunk store does not implement TableFileStore")
-	}
-
-	return tfs.AddTableFilesToManifest(ctx, fileIdToNumChunks)
+	return fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) PruneTableFiles(ctx context.Context) error {
-	tfs, ok := rcs.localCS.(chunks.TableFileStore)
-	if !ok {
-		return fmt.Errorf("local chunk store does not implement TableFileStore")
-	}
-
-	return tfs.PruneTableFiles(ctx)
+	return fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) SetRootChunk(ctx context.Context, root, previous hash.Hash) error {
-	tfs, ok := rcs.localCS.(chunks.TableFileStore)
-	if !ok {
-		return fmt.Errorf("local chunk store does not implement TableFileStore")
-	}
-
-	return tfs.SetRootChunk(ctx, root, previous)
+	return fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) SupportedOperations() chunks.TableFileStoreOps {
@@ -167,5 +186,4 @@ func (rcs *RemoteChunkStore) SupportedOperations() chunks.TableFileStoreOps {
 	}
 
 	return tfs.SupportedOperations()
-
 }

@@ -35,6 +35,7 @@ const (
 
 type Client struct {
 	proto.PingerClient
+	proto.DBSyncerClient
 	remotesapi.ChunkStoreServiceClient
 }
 
@@ -128,9 +129,11 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 
 				// client
 				pingerClient := proto.NewPingerClient(conn)
+				dbSyncerClient := proto.NewDBSyncerClient(conn)
 				csClient := remotesapi.NewChunkStoreServiceClient(conn)
 				client := &Client{
 					pingerClient,
+					dbSyncerClient,
 					csClient,
 				}
 
@@ -164,7 +167,7 @@ func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) 
 	p2p.log.Infof("Disconnected from %s", conn.RemotePeer().String())
 	p2p.peerListChan <- p2p.host.Network().Peers()
 	if err := conn.Close(); err != nil {
-		p2p.log.Error("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
+		p2p.log.Errorf("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
 	}
 	p2p.clients.Remove(conn.RemotePeer().String())
 }

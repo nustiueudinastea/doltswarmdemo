@@ -28,3 +28,21 @@ func (bc *BroadcastClient) Ping(ctx context.Context, in *proto.PingRequest, opts
 	}
 	return responses, nil
 }
+
+func (bc *BroadcastClient) NewHead(ctx context.Context, in *proto.NewHeadRequest, opts ...grpc.CallOption) ([]*proto.NewHeadResponse, error) {
+	responses := make([]*proto.NewHeadResponse, 0)
+	for clientIface := range bc.p2p.clients.IterBuffered() {
+		client, ok := clientIface.Val.(*Client)
+		if !ok {
+			bc.p2p.log.Errorf("Client %s has incorrect type", clientIface.Key)
+			continue
+		}
+
+		resp, err := client.NewHead(ctx, in, opts...)
+		if err != nil {
+			return nil, err
+		}
+		responses = append(responses, resp)
+	}
+	return responses, nil
+}
