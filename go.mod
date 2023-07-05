@@ -11,8 +11,10 @@ replace (
 require (
 	github.com/birros/go-libp2p-grpc v0.0.0-20221206173105-e89b5fdbc175
 	github.com/bokwoon95/sq v0.1.1
+	github.com/cenkalti/backoff v2.2.1+incompatible
 	github.com/dolthub/dolt/go v0.40.5-0.20230503211923-08f2ebf472f2
 	github.com/dolthub/driver v0.0.0-00010101000000-000000000000
+	github.com/dolthub/go-mysql-server v0.15.1-0.20230623193418-5e0f5f98c000
 	github.com/gdamore/tcell/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.26.3
 	github.com/orcaman/concurrent-map v1.0.0
@@ -20,6 +22,9 @@ require (
 	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.9.0
 	github.com/urfave/cli/v2 v2.23.0
+	go.opentelemetry.io/otel v1.11.1
+	go.opentelemetry.io/otel/trace v1.11.1
+	golang.org/x/sync v0.1.0
 	google.golang.org/grpc v1.51.0
 	google.golang.org/protobuf v1.28.1
 )
@@ -51,7 +56,6 @@ require (
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
-	github.com/dolthub/go-mysql-server v0.15.1-0.20230623193418-5e0f5f98c000 // indirect
 	github.com/dolthub/jsonpath v0.0.2-0.20230525180605-8dc13778fd72 // indirect
 	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
 	github.com/dolthub/swiss v0.1.0 // indirect
@@ -163,8 +167,6 @@ require (
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
 	go.opencensus.io v0.24.0 // indirect
-	go.opentelemetry.io/otel v1.11.1 // indirect
-	go.opentelemetry.io/otel/trace v1.11.1 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/dig v1.15.0 // indirect
 	go.uber.org/fx v1.18.2 // indirect
@@ -175,7 +177,6 @@ require (
 	golang.org/x/mod v0.7.0 // indirect
 	golang.org/x/net v0.7.0 // indirect
 	golang.org/x/oauth2 v0.1.0 // indirect
-	golang.org/x/sync v0.1.0 // indirect
 	golang.org/x/sys v0.6.0 // indirect
 	golang.org/x/term v0.5.0 // indirect
 	golang.org/x/text v0.7.0 // indirect

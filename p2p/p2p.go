@@ -7,9 +7,8 @@ import (
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
 	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
-	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/remotesrv"
-	"github.com/dolthub/dolt/go/store/datas"
+	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -33,6 +32,10 @@ const (
 	// protosUpdatesTopic            = protocol.ID("/protos/updates/0.0.1")
 )
 
+type DB interface {
+	GetChunkStore() (chunks.ChunkStore, error)
+}
+
 type Client struct {
 	proto.PingerClient
 	proto.DBSyncerClient
@@ -46,21 +49,21 @@ type P2P struct {
 	peerListChan    chan peer.IDSlice
 	clients         cmap.ConcurrentMap
 	broadcastClient *BroadcastClient
-	doltDB          *doltdb.DoltDB
+	db              DB
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
 }
 
-func (p2p *P2P) GetClient(id peer.ID) (*Client, error) {
-	clientIface, found := p2p.clients.Get(id.String())
+func (p2p *P2P) GetClient(id string) (*Client, error) {
+	clientIface, found := p2p.clients.Get(id)
 	if !found {
-		return nil, fmt.Errorf("Client %s not found", id.String())
+		return nil, fmt.Errorf("Client %s not found", id)
 	}
 	client, ok := clientIface.(*Client)
 	if !ok {
-		return nil, fmt.Errorf("Client %s not found", id.String())
+		return nil, fmt.Errorf("Client %s not found", id)
 	}
 	return client, nil
 }
@@ -179,8 +182,10 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	ctx := context.TODO()
 
 	// prepare dolt chunk store server
-	dbd := doltdb.HackDatasDatabaseFromDoltDB(p2p.doltDB)
-	cs := datas.ChunkStoreFromDatabase(dbd)
+	cs, err := p2p.db.GetChunkStore()
+	if err != nil {
+		return func() error { return nil }, fmt.Errorf("error getting chunk store: %s", err.Error())
+	}
 	chunkStoreCache := dbserver.NewCSCache(cs.(remotesrv.RemoteSrvStore))
 	chunkStoreServer := dbserver.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache)
 
@@ -199,7 +204,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 		}
 	}()
 
-	err := p2p.host.Network().Listen()
+	err = p2p.host.Network().Listen()
 	if err != nil {
 		return func() error { return nil }, fmt.Errorf("failed to listen: %w", err)
 	}
@@ -224,13 +229,13 @@ func (p2p *P2P) StartServer() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db *doltdb.DoltDB) (*P2P, error) {
+func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db DB) (*P2P, error) {
 	p2p := &P2P{
 		PeerChan:     make(chan peer.AddrInfo),
 		peerListChan: peerListChan,
 		clients:      cmap.New(),
 		log:          logger,
-		doltDB:       db,
+		db:           db,
 	}
 
 	p2p.broadcastClient = &BroadcastClient{p2p: p2p}

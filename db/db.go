@@ -14,6 +14,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/binlogreplication"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
+	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/datas"
 	dd "github.com/dolthub/driver"
 	doltSQL "github.com/dolthub/go-mysql-server/sql"
@@ -153,12 +154,6 @@ func (db *DB) Open() error {
 		if err != nil {
 			return fmt.Errorf("failed to init repo state: %w", err)
 		}
-
-		r := env.NewRemote("origin", fmt.Sprintf("protos://%s", dbName), map[string]string{})
-		err = dbEnv.AddRemote(r)
-		if err != nil {
-			return fmt.Errorf("failed to add remote: %w", err)
-		}
 	}
 
 	db.stopper = db.commitUpdater()
@@ -201,6 +196,59 @@ func (db *DB) Init() error {
 	return nil
 }
 
+func (db *DB) GetChunkStore() (chunks.ChunkStore, error) {
+	env := db.mrEnv.GetEnv(dbName)
+	if env == nil {
+		return nil, fmt.Errorf("failed to retrieve db env")
+	}
+
+	dbd := doltdb.HackDatasDatabaseFromDoltDB(env.DoltDB)
+	return datas.ChunkStoreFromDatabase(dbd), nil
+}
+
+func (db *DB) EnableSync(p2p *p2p.P2P) error {
+	db.p2p = p2p
+	dbfactory.RegisterFactory("protos", &dbclient.CustomFactory{P2P: db.p2p})
+	return nil
+}
+
+func (db *DB) AddRemote(peerID string) error {
+	if db.p2p == nil {
+		return fmt.Errorf("p2p sync not initialized")
+	}
+
+	dbEnv := db.mrEnv.GetEnv(dbName)
+	if dbEnv == nil {
+		return fmt.Errorf("db '%s' not found", dbName)
+	}
+
+	r := env.NewRemote(peerID, fmt.Sprintf("protos://%s", peerID), map[string]string{})
+	err := dbEnv.AddRemote(r)
+	if err != nil {
+		return fmt.Errorf("failed to add remote: %w", err)
+	}
+
+	return nil
+}
+
+func (db *DB) RemoveRemote(peerID string) error {
+	if db.p2p == nil {
+		return fmt.Errorf("p2p sync not initialized")
+	}
+
+	dbEnv := db.mrEnv.GetEnv(dbName)
+	if dbEnv == nil {
+		return fmt.Errorf("db '%s' not found", dbName)
+	}
+
+	err := dbEnv.RemoveRemote(context.Background(), peerID)
+	if err != nil {
+		return fmt.Errorf("failed to remove remote: %w", err)
+	}
+
+	return nil
+}
+
 func (db *DB) Sync() error {
 	if db.p2p == nil {
 		return fmt.Errorf("p2p sync not initialized")
@@ -215,28 +263,6 @@ func (db *DB) Sync() error {
 	if err != nil {
 		return fmt.Errorf("failed to sync db: %w", err)
 	}
-	return nil
-}
-
-func (db *DB) GetDoltDB() (*doltdb.DoltDB, error) {
-	testenv := db.mrEnv.GetEnv(dbName)
-	if testenv == nil {
-		return nil, fmt.Errorf("failed to retrieve db env")
-	}
-
-	return testenv.DoltDB, nil
-}
-
-func (db *DB) EnableSync(p2p *p2p.P2P) error {
-	db.p2p = p2p
-	doltDB, err := db.GetDoltDB()
-	if err != nil {
-		return fmt.Errorf("failed to open db: %w", err)
-	}
-	dbd := doltdb.HackDatasDatabaseFromDoltDB(doltDB)
-	cs := datas.ChunkStoreFromDatabase(dbd)
-	dbfactory.RegisterFactory("protos", &dbclient.CustomFactory{P2P: db.p2p, LocalCS: cs})
-
 	return nil
 }
 

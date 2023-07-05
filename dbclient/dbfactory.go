@@ -13,8 +13,7 @@ import (
 )
 
 type CustomFactory struct {
-	P2P     *p2p.P2P
-	LocalCS chunks.ChunkStore
+	P2P *p2p.P2P
 }
 
 func (fact CustomFactory) PrepareDB(ctx context.Context, nbf *types.NomsBinFormat, urlObj *url.URL, params map[string]interface{}) error {
@@ -25,7 +24,7 @@ func (fact CustomFactory) PrepareDB(ctx context.Context, nbf *types.NomsBinForma
 func (fact CustomFactory) CreateDB(ctx context.Context, nbf *types.NomsBinFormat, urlObj *url.URL, params map[string]interface{}) (datas.Database, types.ValueReadWriter, tree.NodeStore, error) {
 	var db datas.Database
 
-	cs, err := fact.newChunkStore()
+	cs, err := fact.newChunkStore(urlObj.Host, nbf.VersionString())
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -37,11 +36,16 @@ func (fact CustomFactory) CreateDB(ctx context.Context, nbf *types.NomsBinFormat
 	return db, vrw, ns, nil
 }
 
-func (fact CustomFactory) newChunkStore() (chunks.ChunkStore, error) {
+func (fact CustomFactory) newChunkStore(peerID string, nbfVersion string) (chunks.ChunkStore, error) {
 
-	cs, err := NewRemoteChunkStore(fact.P2P, fact.LocalCS)
+	client, err := fact.P2P.GetClient(peerID)
 	if err != nil {
-		return nil, fmt.Errorf("could not create remote cs : %w", err)
+		return nil, fmt.Errorf("could not get client for '%s': %w", peerID, err)
+	}
+
+	cs, err := NewRemoteChunkStore(fact.P2P, client, peerID, nbfVersion)
+	if err != nil {
+		return nil, fmt.Errorf("could not create remote cs for '%s': %w", peerID, err)
 	}
 	return cs, err
 }

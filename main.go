@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"os"
 
@@ -17,19 +16,19 @@ var log = logrus.New()
 var dbDir string
 var commitListChan = make(chan []db.Commit, 100)
 
-func listBranches() {
-	ddb, err := dbi.GetDoltDB()
-	if err != nil {
-		log.Fatalf(err.Error())
-	}
+// func listBranches() {
+// 	ddb, err := dbi.GetDoltDB()
+// 	if err != nil {
+// 		log.Fatalf(err.Error())
+// 	}
 
-	ctx := context.Background()
-	headRefs, err := ddb.GetHeadRefs(ctx)
-	if err != nil {
-		log.Fatalf("failed to retrieve head refs: %s", err.Error())
-	}
-	fmt.Println(headRefs)
-}
+// 	ctx := context.Background()
+// 	headRefs, err := ddb.GetHeadRefs(ctx)
+// 	if err != nil {
+// 		log.Fatalf("failed to retrieve head refs: %s", err.Error())
+// 	}
+// 	fmt.Println(headRefs)
+// }
 
 type EventWriter struct {
 	eventChan chan []byte
@@ -109,13 +108,8 @@ func p2pRun(dbDir string, port int) error {
 	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 	log.SetOutput(ew)
 
-	doltDB, err := dbi.GetDoltDB()
-	if err != nil {
-		return err
-	}
-
 	peerListChan := make(chan peer.IDSlice, 1000)
-	p2pmgr, err := p2p.NewManager(true, port, peerListChan, log, doltDB)
+	p2pmgr, err := p2p.NewManager(true, port, peerListChan, log, dbi)
 	if err != nil {
 		return err
 	}
