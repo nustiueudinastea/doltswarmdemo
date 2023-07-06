@@ -16,20 +16,6 @@ var log = logrus.New()
 var dbDir string
 var commitListChan = make(chan []db.Commit, 100)
 
-// func listBranches() {
-// 	ddb, err := dbi.GetDoltDB()
-// 	if err != nil {
-// 		log.Fatalf(err.Error())
-// 	}
-
-// 	ctx := context.Background()
-// 	headRefs, err := ddb.GetHeadRefs(ctx)
-// 	if err != nil {
-// 		log.Fatalf("failed to retrieve head refs: %s", err.Error())
-// 	}
-// 	fmt.Println(headRefs)
-// }
-
 type EventWriter struct {
 	eventChan chan []byte
 }
@@ -41,75 +27,13 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 	return len(logLine), nil
 }
 
-func localInit() error {
-	err := dbi.Init()
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return err
-}
-
-// func p2pInit(dbDir string, port int) error {
-// 	dbi = db.New(dbDir, log)
-// 	err := dbi.OpenForInit()
-// 	if err != nil {
-// 		log.Fatal(err)
-// 	}
-
-// 	err = dbi.Query(fmt.Sprintf("CREATE DATABASE %s;", "test"), false)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to create db: %w", err)
-// 	}
-
-// 	err = dbi.Query("show databases;", true)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to create db: %w", err)
-// 	}
-
-// 	doltDB, err := dbi.GetDoltDB()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	peerListChan := make(chan peer.IDSlice, 100)
-// 	p2pmgr, err := p2p.NewManager(true, port, peerListChan, log, doltDB)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	p2pStopper, err := p2pmgr.StartServer()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	err = dbi.EnableP2P(p2pmgr)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	err = dbi.InitP2P()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	err = p2pStopper()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	log.Info("Shutdown completed")
-
-// 	return nil
-// }
-
 func p2pRun(dbDir string, port int) error {
 
 	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 	log.SetOutput(ew)
 
 	peerListChan := make(chan peer.IDSlice, 1000)
-	p2pmgr, err := p2p.NewManager(true, port, peerListChan, log, dbi)
+	p2pmgr, err := p2p.NewManager(port, peerListChan, log, dbi)
 	if err != nil {
 		return err
 	}
@@ -133,6 +57,38 @@ func p2pRun(dbDir string, port int) error {
 	log.Info("Shutdown completed")
 
 	return nil
+}
+
+func Init(localinit bool, port int) error {
+	if localinit {
+		return dbi.InitLocal()
+	} else {
+		ew := &EventWriter{eventChan: make(chan []byte, 5000)}
+		log.SetOutput(ew)
+
+		peerListChan := make(chan peer.IDSlice, 1000)
+		p2pmgr, err := p2p.NewManager(port, peerListChan, log, dbi)
+		if err != nil {
+			return err
+		}
+
+		p2pStopper, err := p2pmgr.StartServer()
+		if err != nil {
+			return err
+		}
+
+		err = dbi.InitFromPeer()
+		if err != nil {
+			return fmt.Errorf("error initialising from peer: %w", err)
+		}
+
+		err = p2pStopper()
+		if err != nil {
+			return err
+		}
+
+		return nil
+	}
 }
 
 func main() {
@@ -192,14 +148,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					if localinit {
-						return localInit()
-					}
-					// } else {
-					// 	return p2pInit(dbDir, port)
-					// }
-					return nil
-
+					return Init(localinit, port)
 				},
 			},
 			{

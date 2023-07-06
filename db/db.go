@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
+	"log"
 	"time"
 
 	"github.com/bokwoon95/sq"
@@ -45,6 +46,7 @@ type DB struct {
 	sqld           *sql.DB
 	sqlCtx         *doltSQL.Context
 	workingDir     string
+	peers          map[string]string
 	log            *logrus.Logger
 }
 
@@ -53,6 +55,7 @@ func New(dir string, commitListChan chan []Commit, logger *logrus.Logger) *DB {
 		workingDir:     dir,
 		log:            logger,
 		commitListChan: commitListChan,
+		peers:          map[string]string{},
 	}
 
 	return db
@@ -139,7 +142,7 @@ func (db *DB) Close() error {
 	return nil
 }
 
-func (db *DB) Init() error {
+func (db *DB) InitLocal() error {
 	err := db.Query(fmt.Sprintf("CREATE DATABASE %s;", dbName), true)
 	if err != nil {
 		return fmt.Errorf("failed to create db: %w", err)
@@ -162,6 +165,27 @@ func (db *DB) Init() error {
 	return nil
 }
 
+func (db *DB) InitFromPeer() error {
+	for {
+		if len(db.peers) == 0 {
+			db.log.Info("waiting for at least one peer to be added")
+		} else {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+
+	var peerID string
+	for id := range db.peers {
+		peerID = id
+		break
+	}
+
+	db.log.Infof("initializing from peer %s", peerID)
+
+	return nil
+}
+
 func (db *DB) GetChunkStore() (chunks.ChunkStore, error) {
 	env := db.mrEnv.GetEnv(dbName)
 	if env == nil {
@@ -173,6 +197,7 @@ func (db *DB) GetChunkStore() (chunks.ChunkStore, error) {
 }
 
 func (db *DB) EnableSync(cr dbclient.ClientRetriever) error {
+
 	dbfactory.RegisterFactory("protos", dbclient.NewCustomFactory(cr))
 	return nil
 }
@@ -189,6 +214,8 @@ func (db *DB) AddRemote(peerID string) error {
 		return fmt.Errorf("failed to add remote: %w", err)
 	}
 
+	db.peers[peerID] = peerID
+
 	return nil
 }
 
@@ -202,6 +229,8 @@ func (db *DB) RemoveRemote(peerID string) error {
 	if err != nil {
 		return fmt.Errorf("failed to remove remote: %w", err)
 	}
+
+	delete(db.peers, peerID)
 
 	return nil
 }
@@ -311,6 +340,21 @@ func (db *DB) PrintAllData() error {
 		return fmt.Errorf("failed to retrieve commits: %w", err)
 	}
 
+	return nil
+}
+
+func (db *DB) PrintBranches() error {
+	dbEnv := db.mrEnv.GetEnv(dbName)
+	if dbEnv == nil {
+		return fmt.Errorf("db '%s' not found", dbName)
+	}
+
+	ctx := context.Background()
+	headRefs, err := dbEnv.DoltDB.GetHeadRefs(ctx)
+	if err != nil {
+		log.Fatalf("failed to retrieve head refs: %s", err.Error())
+	}
+	fmt.Println(headRefs)
 	return nil
 }
 

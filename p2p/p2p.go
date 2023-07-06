@@ -252,7 +252,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db DB) (*P2P, error) {
+func NewManager(port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db DB) (*P2P, error) {
 	p2p := &P2P{
 		PeerChan:     make(chan peer.AddrInfo),
 		peerListChan: peerListChan,
