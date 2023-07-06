@@ -19,6 +19,7 @@ import (
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
+	"github.com/protosio/distributeddolt/dbclient"
 	"github.com/protosio/distributeddolt/dbserver"
 	"github.com/protosio/distributeddolt/pinger"
 	"github.com/protosio/distributeddolt/proto"
@@ -33,6 +34,7 @@ const (
 )
 
 type DB interface {
+	EnableSync(cr dbclient.ClientRetriever) error
 	GetChunkStore() (chunks.ChunkStore, error)
 	AddRemote(peerID string) error
 	RemoveRemote(peerID string) error
@@ -59,6 +61,18 @@ func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 }
 
 func (p2p *P2P) GetClient(id string) (*Client, error) {
+	clientIface, found := p2p.clients.Get(id)
+	if !found {
+		return nil, fmt.Errorf("Client %s not found", id)
+	}
+	client, ok := clientIface.(*Client)
+	if !ok {
+		return nil, fmt.Errorf("Client %s not found", id)
+	}
+	return client, nil
+}
+
+func (p2p *P2P) GetCSClient(id string) (remotesapi.ChunkStoreServiceClient, error) {
 	clientIface, found := p2p.clients.Get(id)
 	if !found {
 		return nil, fmt.Errorf("Client %s not found", id)
@@ -278,6 +292,11 @@ func NewManager(initMode bool, port int, peerListChan chan peer.IDSlice, logger 
 		DisconnectedF: p2p.closeConnectionHandler,
 	}
 	p2p.host.Network().Notify(&nb)
+
+	err = p2p.db.EnableSync(p2p)
+	if err != nil {
+		return nil, fmt.Errorf("failed to enable db sync: %w", err)
+	}
 
 	p2p.log.Debugf("Using host with ID '%s'", host.ID().String())
 	return p2p, nil

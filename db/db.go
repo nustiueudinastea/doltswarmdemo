@@ -19,7 +19,6 @@ import (
 	dd "github.com/dolthub/driver"
 	doltSQL "github.com/dolthub/go-mysql-server/sql"
 	"github.com/protosio/distributeddolt/dbclient"
-	"github.com/protosio/distributeddolt/p2p"
 	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
 )
@@ -41,7 +40,6 @@ var tableName = "testtable"
 type DB struct {
 	stopper        func() error
 	commitListChan chan []Commit
-	p2p            *p2p.P2P
 	mrEnv          *env.MultiRepoEnv
 	sqle           *engine.SqlEngine
 	sqld           *sql.DB
@@ -59,38 +57,6 @@ func New(dir string, commitListChan chan []Commit, logger *logrus.Logger) *DB {
 
 	return db
 }
-
-// func (db *DB) InitP2P() error {
-// 	if db.sqle == nil {
-// 		return errors.New("db not opened")
-// 	}
-
-// 	err := db.Query(fmt.Sprintf("CALL dolt_clone('-remote', 'origin', 'protos://%s', '%s' );", dbName, dbName), false)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to clone db: %w", err)
-// 	}
-// 	return nil
-// }
-
-// func (db *DB) OpenForInit() error {
-// 	path, err := os.Getwd()
-// 	if err != nil {
-// 		return fmt.Errorf("failed to open db: %w", err)
-// 	}
-
-// 	workingDir := fmt.Sprintf("%s/%s", path, db.workingDir)
-// 	err = ensureDir(workingDir)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to open db: %w", err)
-// 	}
-
-// 	db.i, err = sql.Open("dolt", fmt.Sprintf("file:///%s?commitname=Tester&commitemail=tester@test.com&database=%s", workingDir, dbName))
-// 	if err != nil {
-// 		return fmt.Errorf("failed to open db: %w", err)
-// 	}
-
-// 	return nil
-// }
 
 func (db *DB) Open() error {
 	workingDir, err := filesys.LocalFS.Abs(db.workingDir)
@@ -206,17 +172,12 @@ func (db *DB) GetChunkStore() (chunks.ChunkStore, error) {
 	return datas.ChunkStoreFromDatabase(dbd), nil
 }
 
-func (db *DB) EnableSync(p2p *p2p.P2P) error {
-	db.p2p = p2p
-	dbfactory.RegisterFactory("protos", &dbclient.CustomFactory{P2P: db.p2p})
+func (db *DB) EnableSync(cr dbclient.ClientRetriever) error {
+	dbfactory.RegisterFactory("protos", dbclient.NewCustomFactory(cr))
 	return nil
 }
 
 func (db *DB) AddRemote(peerID string) error {
-	if db.p2p == nil {
-		return fmt.Errorf("p2p sync not initialized")
-	}
-
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
 		return fmt.Errorf("db '%s' not found", dbName)
@@ -232,10 +193,6 @@ func (db *DB) AddRemote(peerID string) error {
 }
 
 func (db *DB) RemoveRemote(peerID string) error {
-	if db.p2p == nil {
-		return fmt.Errorf("p2p sync not initialized")
-	}
-
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
 		return fmt.Errorf("db '%s' not found", dbName)
@@ -250,10 +207,6 @@ func (db *DB) RemoveRemote(peerID string) error {
 }
 
 func (db *DB) Sync() error {
-	if db.p2p == nil {
-		return fmt.Errorf("p2p sync not initialized")
-	}
-
 	err := db.Query(fmt.Sprintf("USE %s;", dbName), false)
 	if err != nil {
 		return fmt.Errorf("failed to use db: %w", err)
@@ -394,69 +347,3 @@ func (db *DB) commitUpdater() func() error {
 	}
 	return stopper
 }
-
-// func (db *DB) InitNew() error {
-// 	workingDir, err := filesys.LocalFS.Abs(db.workingDir)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to get absolute path for %s: %v", workingDir, err)
-// 	}
-// 	workingDirFS, err := filesys.LocalFS.WithWorkingDir(workingDir)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to open db: %w", err)
-// 	}
-
-// 	// ensure working dir
-// 	err = ensureDir(workingDir)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to open db: %w", err)
-// 	}
-
-// 	ctx := context.Background()
-// 	dEnv := env.Load(ctx, env.GetCurrentUserHomeDir, workingDirFS, "file://"+workingDir, "1.6.1")
-
-// 	mrEnv, err := env.MultiEnvForDirectory(ctx, dEnv.Config.WriteableConfig(), workingDirFS, dEnv.Version, dEnv.IgnoreLockFile, dEnv)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to load database names")
-// 	}
-
-// 	db.mrEnv = mrEnv
-
-// 	config := &engine.SqlEngineConfig{
-// 		IsReadOnly:              false,
-// 		PrivFilePath:            ".doltcfg/privileges.db",
-// 		BranchCtrlFilePath:      ".doltcfg/branch_control.db",
-// 		DoltCfgDirPath:          ".doltcfg",
-// 		ServerUser:              "root",
-// 		ServerPass:              "",
-// 		ServerHost:              "localhost",
-// 		Autocommit:              true,
-// 		DoltTransactionCommit:   false,
-// 		JwksConfig:              []engine.JwksConfig{},
-// 		ClusterController:       nil,
-// 		BinlogReplicaController: binlogreplication.DoltBinlogReplicaController,
-// 	}
-
-// 	sqlEngine, err := engine.NewSqlEngine(context.Background(), db.mrEnv, config)
-// 	if err != nil {
-// 		return fmt.Errorf("failed to create sql engine: %w", err)
-// 	}
-
-// 	db.sqle = sqlEngine
-
-// 	return nil
-// }
-
-// func (db *DB) PrintQueryResult(query string) {
-// 	fmt.Println("query:", query)
-// 	rows, err := db.i.Query(query)
-// 	if err != nil {
-// 		log.Fatalf("query '%s' failed: %s", query, err.Error())
-// 	}
-// 	defer rows.Close()
-
-// 	fmt.Println("results:")
-// 	err = printRows(rows, db.log)
-// 	if err != nil {
-// 		log.Fatalf("failed to print results for query '%s': %s", query, err.Error())
-// 	}
-// }

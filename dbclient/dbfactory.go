@@ -5,19 +5,26 @@ import (
 	"fmt"
 	"net/url"
 
+	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/datas"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
-	"github.com/protosio/distributeddolt/p2p"
 )
 
+type ClientRetriever interface {
+	GetCSClient(peerID string) (remotesapi.ChunkStoreServiceClient, error)
+}
+
+func NewCustomFactory(cr ClientRetriever) CustomFactory {
+	return CustomFactory{cr}
+}
+
 type CustomFactory struct {
-	P2P *p2p.P2P
+	cr ClientRetriever
 }
 
 func (fact CustomFactory) PrepareDB(ctx context.Context, nbf *types.NomsBinFormat, urlObj *url.URL, params map[string]interface{}) error {
-	// nothing to prepare
 	return nil
 }
 
@@ -38,12 +45,12 @@ func (fact CustomFactory) CreateDB(ctx context.Context, nbf *types.NomsBinFormat
 
 func (fact CustomFactory) newChunkStore(peerID string, nbfVersion string) (chunks.ChunkStore, error) {
 
-	client, err := fact.P2P.GetClient(peerID)
+	client, err := fact.cr.GetCSClient(peerID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get client for '%s': %w", peerID, err)
 	}
 
-	cs, err := NewRemoteChunkStore(fact.P2P, client, peerID, nbfVersion)
+	cs, err := NewRemoteChunkStore(client, peerID, nbfVersion)
 	if err != nil {
 		return nil, fmt.Errorf("could not create remote cs for '%s': %w", peerID, err)
 	}

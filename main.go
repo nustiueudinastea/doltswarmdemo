@@ -119,16 +119,6 @@ func p2pRun(dbDir string, port int) error {
 		return err
 	}
 
-	err = dbi.EnableSync(p2pmgr)
-	if err != nil {
-		return err
-	}
-
-	err = dbi.Sync()
-	if err != nil {
-		return err
-	}
-
 	gui := createUI(peerListChan, commitListChan, ew.eventChan)
 	// the following blocks so we can close everything else once this returns
 	err = gui.Run()

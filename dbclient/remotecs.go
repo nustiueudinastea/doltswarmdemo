@@ -15,7 +15,6 @@ import (
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/nbs"
-	"github.com/protosio/distributeddolt/p2p"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/sync/errgroup"
@@ -27,9 +26,8 @@ const (
 	maxHasManyBatchSize = 16 * 1024
 )
 
-func NewRemoteChunkStore(p2p *p2p.P2P, csClient remotesapi.ChunkStoreServiceClient, peerID string, nbfVersion string) (*RemoteChunkStore, error) {
+func NewRemoteChunkStore(csClient remotesapi.ChunkStoreServiceClient, peerID string, nbfVersion string) (*RemoteChunkStore, error) {
 	rcs := &RemoteChunkStore{
-		p2p:         p2p,
 		csClient:    csClient,
 		peerID:      peerID,
 		cache:       newMapChunkCache(),
@@ -61,7 +59,6 @@ type ConcurrencyParams struct {
 }
 
 type RemoteChunkStore struct {
-	p2p         *p2p.P2P
 	csClient    remotesapi.ChunkStoreServiceClient
 	peerID      string
 	cache       remotestorage.ChunkCache
