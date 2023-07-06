@@ -34,6 +34,8 @@ const (
 
 type DB interface {
 	GetChunkStore() (chunks.ChunkStore, error)
+	AddRemote(peerID string) error
+	RemoveRemote(peerID string) error
 }
 
 type Client struct {
@@ -152,6 +154,10 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				p2p.log.Infof("Connected to %s", peer.ID.String())
 				p2p.clients.Set(peer.ID.String(), client)
 				p2p.peerListChan <- p2p.host.Network().Peers()
+				err = p2p.db.AddRemote(peer.ID.String())
+				if err != nil {
+					p2p.log.Errorf("Failed to add DB remote for '%s': %v", peer.ID.String(), err)
+				}
 
 			case <-stopSignal:
 				p2p.log.Info("Stopping peer discovery processor")
@@ -173,6 +179,9 @@ func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) 
 		p2p.log.Errorf("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
 	}
 	p2p.clients.Remove(conn.RemotePeer().String())
+	if err := p2p.db.RemoveRemote(conn.RemotePeer().String()); err != nil {
+		p2p.log.Errorf("Failed to remove DB remote for '%s': %v", conn.RemotePeer().String(), err)
+	}
 }
 
 // StartServer starts listening for p2p connections
