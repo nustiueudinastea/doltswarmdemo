@@ -207,7 +207,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	// prepare dolt chunk store server
 	cs, err := p2p.db.GetChunkStore()
 	if err != nil {
-		return func() error { return nil }, fmt.Errorf("error getting chunk store: %s", err.Error())
+		return func() error { return nil }, fmt.Errorf("error starting p2p server: error getting chunk store: %s", err.Error())
 	}
 	chunkStoreCache := dbserver.NewCSCache(cs.(remotesrv.RemoteSrvStore))
 	chunkStoreServer := dbserver.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache)
