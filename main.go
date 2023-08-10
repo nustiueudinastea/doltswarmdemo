@@ -43,6 +43,8 @@ func p2pRun(dbDir string, port int) error {
 		return err
 	}
 
+	dbi.StartUpdater()
+
 	gui := createUI(peerListChan, commitListChan, ew.eventChan)
 	// the following blocks so we can close everything else once this returns
 	err = gui.Run()
@@ -63,8 +65,8 @@ func Init(localinit bool, port int) error {
 	if localinit {
 		return dbi.InitLocal()
 	} else {
-		ew := &EventWriter{eventChan: make(chan []byte, 5000)}
-		log.SetOutput(ew)
+		// ew := &EventWriter{eventChan: make(chan []byte, 5000)}
+		// log.SetOutput(ew)
 
 		peerListChan := make(chan peer.IDSlice, 1000)
 		p2pmgr, err := p2p.NewManager(port, peerListChan, log, dbi)
@@ -72,10 +74,13 @@ func Init(localinit bool, port int) error {
 			return err
 		}
 
-		p2pStopper, err := p2pmgr.StartServer()
-		if err != nil {
-			return err
-		}
+		var p2pStopper func() error
+		go func() {
+			p2pStopper, err = p2pmgr.StartServerInit()
+			if err != nil {
+				panic(err)
+			}
+		}()
 
 		err = dbi.InitFromPeer()
 		if err != nil {
@@ -96,8 +101,12 @@ func main() {
 	var localinit bool
 
 	funcBefore := func(ctx *cli.Context) error {
-		dbi = db.New(dbDir, commitListChan, log)
-		err := dbi.Open()
+		var err error
+		dbi, err = db.New(dbDir, commitListChan, log)
+		if err != nil {
+			log.Fatal(err)
+		}
+		err = dbi.Open()
 		if err != nil {
 			log.Fatal(err)
 		}

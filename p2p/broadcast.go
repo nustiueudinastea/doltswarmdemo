@@ -14,7 +14,7 @@ type BroadcastClient struct {
 func (bc *BroadcastClient) Ping(ctx context.Context, in *proto.PingRequest, opts ...grpc.CallOption) ([]*proto.PingResponse, error) {
 	responses := make([]*proto.PingResponse, 0)
 	for clientIface := range bc.p2p.clients.IterBuffered() {
-		client, ok := clientIface.Val.(*Client)
+		client, ok := clientIface.Val.(*P2PClient)
 		if !ok {
 			bc.p2p.log.Errorf("Client %s has incorrect type", clientIface.Key)
 			continue
@@ -32,7 +32,7 @@ func (bc *BroadcastClient) Ping(ctx context.Context, in *proto.PingRequest, opts
 func (bc *BroadcastClient) NewHead(ctx context.Context, in *proto.NewHeadRequest, opts ...grpc.CallOption) ([]*proto.NewHeadResponse, error) {
 	responses := make([]*proto.NewHeadResponse, 0)
 	for clientIface := range bc.p2p.clients.IterBuffered() {
-		client, ok := clientIface.Val.(*Client)
+		client, ok := clientIface.Val.(*P2PClient)
 		if !ok {
 			bc.p2p.log.Errorf("Client %s has incorrect type", clientIface.Key)
 			continue

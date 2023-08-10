@@ -17,12 +17,13 @@ package dbserver
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
-	"strings"
-	"sync/atomic"
 
+	"github.com/protosio/distributeddolt/proto"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
@@ -30,31 +31,22 @@ import (
 
 	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/dolthub/dolt/go/libraries/doltcore/remotestorage"
-	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/types"
 )
 
 var ErrUnimplemented = errors.New("unimplemented")
+var chunkSize = 1024 * 3
 
 const RepoPathField = "repo_path"
 
-type ServerChunkStore struct {
-	HttpHost   string
-	httpScheme string
-
-	csCache DBCache
-	bucket  string
-	lgr     *logrus.Entry
-	remotesapi.UnimplementedChunkStoreServiceServer
-}
-
-func NewServerChunkStore(lgr *logrus.Entry, csCache DBCache) *ServerChunkStore {
+func NewServerChunkStore(logger *logrus.Entry, csCache DBCache, filePath string) *ServerChunkStore {
 	return &ServerChunkStore{
 		csCache: csCache,
 		bucket:  "",
-		lgr: lgr.WithFields(logrus.Fields{
+		log: logger.WithFields(logrus.Fields{
 			"service": "ChunkStoreService",
 		}),
+		filePath: filePath,
 	}
 }
 
@@ -73,8 +65,18 @@ func getRepoPath(req repoRequest) string {
 	panic("unexpected empty repo_path and nil repo_id")
 }
 
+type ServerChunkStore struct {
+	csCache  DBCache
+	bucket   string
+	log      *logrus.Entry
+	filePath string
+
+	remotesapi.UnimplementedChunkStoreServiceServer
+	proto.UnimplementedFileDownloaderServer
+}
+
 func (rs *ServerChunkStore) HasChunks(ctx context.Context, req *remotesapi.HasChunksRequest) (*remotesapi.HasChunksResponse, error) {
-	logger := getReqLogger(rs.lgr, "HasChunks")
+	logger := getReqLogger(rs.log, "HasChunks")
 	if err := ValidateHasChunksRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -120,7 +122,7 @@ func (rs *ServerChunkStore) GetDownloadLocations(ctx context.Context, req *remot
 }
 
 func (rs *ServerChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStoreService_StreamDownloadLocationsServer) error {
-	ologger := getReqLogger(rs.lgr, "StreamDownloadLocations")
+	ologger := getReqLogger(rs.log, "StreamDownloadLocations")
 	numMessages := 0
 	numHashes := 0
 	numUrls := 0
@@ -135,11 +137,8 @@ func (rs *ServerChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStore
 	}()
 	logger := ologger
 
-	md, _ := metadata.FromIncomingContext(stream.Context())
-
 	var repoPath string
 	var cs RemoteSrvStore
-	var prefix string
 	for {
 		req, err := stream.Recv()
 		if err != nil {
@@ -196,15 +195,13 @@ func (rs *ServerChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStore
 				ranges = append(ranges, &remotesapi.RangeChunk{Hash: hCpy[:], Offset: r.Offset, Length: r.Length})
 			}
 
-			url := rs.getDownloadUrl(md, prefix+"/"+loc)
-			preurl := url.String()
 			logger.WithFields(logrus.Fields{
-				"url":        preurl,
+				"url":        loc,
 				"ranges":     ranges,
-				"sealed_url": url.String(),
+				"sealed_url": loc,
 			}).Trace("generated sealed url")
 
-			getRange := &remotesapi.HttpGetRange{Url: url.String(), Ranges: ranges}
+			getRange := &remotesapi.HttpGetRange{Url: loc, Ranges: ranges}
 			locs = append(locs, &remotesapi.DownloadLoc{Location: &remotesapi.DownloadLoc_HttpGetRange{HttpGetRange: getRange}})
 		}
 
@@ -214,56 +211,12 @@ func (rs *ServerChunkStore) StreamDownloadLocations(stream remotesapi.ChunkStore
 	}
 }
 
-func (rs *ServerChunkStore) getHost(md metadata.MD) string {
-	host := rs.HttpHost
-	if strings.HasPrefix(rs.HttpHost, ":") {
-		hosts := md.Get(":authority")
-		if len(hosts) > 0 {
-			host = strings.Split(hosts[0], ":")[0] + rs.HttpHost
-		}
-	} else if rs.HttpHost == "" {
-		hosts := md.Get(":authority")
-		if len(hosts) > 0 {
-			host = hosts[0]
-		}
-	}
-	return host
-}
-
-func (rs *ServerChunkStore) getDownloadUrl(md metadata.MD, path string) *url.URL {
-	host := rs.getHost(md)
-	return &url.URL{
-		Scheme: rs.httpScheme,
-		Host:   host,
-		Path:   path,
-	}
-}
-
-func parseTableFileDetails(req *remotesapi.GetUploadLocsRequest) []*remotesapi.TableFileDetails {
-	tfd := req.GetTableFileDetails()
-
-	if len(tfd) == 0 {
-		_, hashToIdx := remotestorage.ParseByteSlices(req.TableFileHashes)
-
-		tfd = make([]*remotesapi.TableFileDetails, len(hashToIdx))
-		for h, i := range hashToIdx {
-			tfd[i] = &remotesapi.TableFileDetails{
-				Id:            h[:],
-				ContentLength: 0,
-				ContentHash:   nil,
-			}
-		}
-	}
-
-	return tfd
-}
-
 func (rs *ServerChunkStore) GetUploadLocations(ctx context.Context, req *remotesapi.GetUploadLocsRequest) (*remotesapi.GetUploadLocsResponse, error) {
 	return nil, status.Error(codes.PermissionDenied, "this server only provides read-only access")
 }
 
 func (rs *ServerChunkStore) Rebase(ctx context.Context, req *remotesapi.RebaseRequest) (*remotesapi.RebaseResponse, error) {
-	logger := getReqLogger(rs.lgr, "Rebase")
+	logger := getReqLogger(rs.log, "Rebase")
 	if err := ValidateRebaseRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -280,7 +233,7 @@ func (rs *ServerChunkStore) Rebase(ctx context.Context, req *remotesapi.RebaseRe
 }
 
 func (rs *ServerChunkStore) Root(ctx context.Context, req *remotesapi.RootRequest) (*remotesapi.RootResponse, error) {
-	logger := getReqLogger(rs.lgr, "Root")
+	logger := getReqLogger(rs.log, "Root")
 	if err := ValidateRootRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -307,7 +260,7 @@ func (rs *ServerChunkStore) Commit(ctx context.Context, req *remotesapi.CommitRe
 }
 
 func (rs *ServerChunkStore) GetRepoMetadata(ctx context.Context, req *remotesapi.GetRepoMetadataRequest) (*remotesapi.GetRepoMetadataResponse, error) {
-	logger := getReqLogger(rs.lgr, "GetRepoMetadata")
+	logger := getReqLogger(rs.log, "GetRepoMetadata")
 	if err := ValidateGetRepoMetadataRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -334,7 +287,7 @@ func (rs *ServerChunkStore) GetRepoMetadata(ctx context.Context, req *remotesapi
 }
 
 func (rs *ServerChunkStore) ListTableFiles(ctx context.Context, req *remotesapi.ListTableFilesRequest) (*remotesapi.ListTableFilesResponse, error) {
-	logger := getReqLogger(rs.lgr, "ListTableFiles")
+	logger := getReqLogger(rs.log, "ListTableFiles")
 	if err := ValidateListTableFilesRequest(req); err != nil {
 		return nil, status.Error(codes.InvalidArgument, err.Error())
 	}
@@ -353,24 +306,8 @@ func (rs *ServerChunkStore) ListTableFiles(ctx context.Context, req *remotesapi.
 		return nil, status.Error(codes.Internal, "failed to get sources")
 	}
 
-	md, _ := metadata.FromIncomingContext(ctx)
-
-	tableFileInfo, err := getTableFileInfo(logger, md, rs, tables, req, cs)
-	if err != nil {
-		logger.WithError(err).Error("error getting table file info")
-		return nil, err
-	}
-
-	appendixTableFileInfo, err := getTableFileInfo(logger, md, rs, appendixTables, req, cs)
-	if err != nil {
-		logger.WithError(err).Error("error getting appendix table file info")
-		return nil, err
-	}
-
-	logger = logger.WithFields(logrus.Fields{
-		"num_table_files":          len(tableFileInfo),
-		"num_appendix_table_files": len(appendixTableFileInfo),
-	})
+	tableFileInfo := buildTableFileInfo(tables)
+	appendixTableFileInfo := buildTableFileInfo(appendixTables)
 
 	resp := &remotesapi.ListTableFilesResponse{
 		RootHash:              root[:],
@@ -379,32 +316,6 @@ func (rs *ServerChunkStore) ListTableFiles(ctx context.Context, req *remotesapi.
 	}
 
 	return resp, nil
-}
-
-func getTableFileInfo(
-	logger *logrus.Entry,
-	md metadata.MD,
-	rs *ServerChunkStore,
-	tableList []chunks.TableFile,
-	req *remotesapi.ListTableFilesRequest,
-	cs RemoteSrvStore,
-) ([]*remotesapi.TableFileInfo, error) {
-	var prefix string
-	// prefix, err = rs.getRelativeStorePath(cs)
-	// if err != nil {
-	// 	return nil, err
-	// }
-	appendixTableFileInfo := make([]*remotesapi.TableFileInfo, 0)
-	for _, t := range tableList {
-		url := rs.getDownloadUrl(md, prefix+"/"+t.FileID())
-
-		appendixTableFileInfo = append(appendixTableFileInfo, &remotesapi.TableFileInfo{
-			FileId:    t.FileID(),
-			NumChunks: uint32(t.NumChunks()),
-			Url:       url.String(),
-		})
-	}
-	return appendixTableFileInfo, nil
 }
 
 // AddTableFiles updates the remote manifest with new table files without modifying the root hash.
@@ -432,17 +343,55 @@ func (rs *ServerChunkStore) getOrCreateStore(logger *logrus.Entry, repoPath, nbf
 	return cs, nil
 }
 
-var requestId int32
+//
+// FileDownloaderServer implementation
+//
 
-func incReqId() int {
-	return int(atomic.AddInt32(&requestId, 1))
-}
+func (rs *ServerChunkStore) Download(req *proto.DownloadRequest, server proto.FileDownloader_DownloadServer) error {
+	if req.GetId() == "" {
+		return status.Error(codes.InvalidArgument, "id is required")
+	}
 
-func getReqLogger(lgr *logrus.Entry, method string) *logrus.Entry {
-	lgr = lgr.WithFields(logrus.Fields{
-		"method":      method,
-		"request_num": strconv.Itoa(incReqId()),
+	filePath := filepath.Join(rs.filePath, ".dolt", "noms", req.Id)
+	rs.log.Info(fmt.Sprintf("Sending file %s", filePath))
+	fileInfo, err := os.Stat(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to send file %s: %w", filePath, err)
+	}
+
+	f, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("failed to open file %s: %w", filePath, err)
+	}
+
+	md := metadata.New(map[string]string{
+		"file-name": req.Id,
+		"file-size": strconv.FormatInt(fileInfo.Size(), 10),
 	})
-	lgr.Info("starting request")
-	return lgr
+
+	err = server.SendHeader(md)
+	if err != nil {
+		return status.Error(codes.Internal, "error during sending header")
+	}
+
+	chunk := &proto.DownloadResponse{Chunk: make([]byte, chunkSize)}
+	var n int
+
+Loop:
+	for {
+		n, err = f.Read(chunk.Chunk)
+		switch err {
+		case nil:
+		case io.EOF:
+			break Loop
+		default:
+			return status.Errorf(codes.Internal, "io.ReadAll: %v", err)
+		}
+		chunk.Chunk = chunk.Chunk[:n]
+		serverErr := server.Send(chunk)
+		if serverErr != nil {
+			return status.Errorf(codes.Internal, "server.Send: %v", serverErr)
+		}
+	}
+	return nil
 }

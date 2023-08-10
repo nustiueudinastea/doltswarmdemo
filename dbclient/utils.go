@@ -3,12 +3,14 @@ package dbclient
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"time"
 
 	"github.com/cenkalti/backoff"
 	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/dolthub/dolt/go/libraries/doltcore/remotestorage"
+	"github.com/protosio/distributeddolt/proto"
 	"golang.org/x/sync/errgroup"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -178,4 +180,28 @@ func concurrentExec(work []func() error, concurrency int) error {
 	}
 
 	return eg.Wait()
+}
+
+func copyFromResponse(w *io.PipeWriter, res proto.FileDownloader_DownloadClient) {
+	message := new(proto.DownloadResponse)
+	var err error
+	for {
+		err = res.RecvMsg(message)
+		if err == io.EOF {
+			_ = w.Close()
+			break
+		}
+		if err != nil {
+			_ = w.CloseWithError(err)
+			break
+		}
+		if len(message.GetChunk()) > 0 {
+			_, err = w.Write(message.Chunk)
+			if err != nil {
+				_ = res.CloseSend()
+				break
+			}
+		}
+		message.Chunk = message.Chunk[:0]
+	}
 }

@@ -26,9 +26,9 @@ const (
 	maxHasManyBatchSize = 16 * 1024
 )
 
-func NewRemoteChunkStore(csClient remotesapi.ChunkStoreServiceClient, peerID string, nbfVersion string) (*RemoteChunkStore, error) {
+func NewRemoteChunkStore(client Client, peerID string, nbfVersion string) (*RemoteChunkStore, error) {
 	rcs := &RemoteChunkStore{
-		csClient:    csClient,
+		client:      client,
 		peerID:      peerID,
 		cache:       newMapChunkCache(),
 		httpFetcher: &http.Client{},
@@ -40,7 +40,21 @@ func NewRemoteChunkStore(csClient remotesapi.ChunkStoreServiceClient, peerID str
 		nbfVersion: nbfVersion,
 	}
 
-	err := rcs.loadRoot(context.Background())
+	metadata, err := client.GetRepoMetadata(context.Background(), &remotesapi.GetRepoMetadataRequest{
+		RepoId:   rcs.getRepoId(),
+		RepoPath: "",
+		ClientRepoFormat: &remotesapi.ClientRepoFormat{
+			NbfVersion: nbfVersion,
+			NbsVersion: nbs.StorageVersion,
+		},
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	rcs.repoSize = metadata.StorageSize
+
+	err = rcs.loadRoot(context.Background())
 	if err != nil {
 		return nil, err
 	}
@@ -59,12 +73,13 @@ type ConcurrencyParams struct {
 }
 
 type RemoteChunkStore struct {
-	csClient    remotesapi.ChunkStoreServiceClient
+	client      Client
 	peerID      string
 	cache       remotestorage.ChunkCache
 	httpFetcher HTTPFetcher
 	concurrency ConcurrencyParams
 	nbfVersion  string
+	repoSize    uint64
 	root        hash.Hash
 }
 
@@ -175,7 +190,7 @@ func (rcs *RemoteChunkStore) getDLLocs(ctx context.Context, hashes []hash.Hash) 
 		})
 		op := func() error {
 			seg, ctx := errgroup.WithContext(ctx)
-			stream, err := rcs.csClient.StreamDownloadLocations(ctx)
+			stream, err := rcs.client.StreamDownloadLocations(ctx)
 			if err != nil {
 				return remotestorage.NewRpcError(err, "StreamDownloadLocations", rcs.peerID, nil)
 			}
@@ -285,7 +300,7 @@ func (rcs *RemoteChunkStore) downloadChunks(ctx context.Context, dlLocs dlLocati
 	})
 
 	toUrl := func(ctx context.Context, lastError error, resourcePath string) (string, error) {
-		return dlLocs.refreshes[resourcePath].GetURL(ctx, lastError, rcs.csClient)
+		return dlLocs.refreshes[resourcePath].GetURL(ctx, lastError, rcs.client)
 	}
 
 	stats := remotestorage.StatsFactory()
@@ -352,7 +367,7 @@ func (rcs *RemoteChunkStore) HasMany(ctx context.Context, hashes hash.HashSet) (
 		// send a request to the remote api to determine which chunks the remote api already has
 		req := &remotesapi.HasChunksRequest{Hashes: currByteSl, RepoPath: rcs.peerID}
 		var resp *remotesapi.HasChunksResponse
-		resp, err = rcs.csClient.HasChunks(ctx, req)
+		resp, err = rcs.client.HasChunks(ctx, req)
 		if err != nil {
 			err = remotestorage.NewRpcError(err, "HasChunks", rcs.peerID, req)
 			return true
@@ -408,7 +423,7 @@ func (rcs *RemoteChunkStore) Put(ctx context.Context, c chunks.Chunk, getAddrs c
 }
 
 func (rcs *RemoteChunkStore) Version() string {
-	fmt.Println("calling Version")
+	fmt.Println("calling Version: ", rcs.nbfVersion)
 	return rcs.nbfVersion
 }
 
@@ -419,7 +434,7 @@ func (rcs *RemoteChunkStore) Rebase(ctx context.Context) error {
 
 func (rcs *RemoteChunkStore) loadRoot(ctx context.Context) error {
 	req := &remotesapi.RootRequest{RepoPath: rcs.peerID}
-	resp, err := rcs.csClient.Root(ctx, req)
+	resp, err := rcs.client.Root(ctx, req)
 	if err != nil {
 		return remotestorage.NewRpcError(err, "Root", rcs.peerID, req)
 	}
@@ -452,16 +467,42 @@ func (rcs *RemoteChunkStore) Close() error {
 	return nil
 }
 
+func (rcs *RemoteChunkStore) getRepoId() *remotesapi.RepoId {
+	return &remotesapi.RepoId{Org: rcs.peerID, RepoName: "protos"}
+}
+
 //
 // TableFileStore implementation
 //
 
 func (rcs *RemoteChunkStore) Sources(ctx context.Context) (hash.Hash, []chunks.TableFile, []chunks.TableFile, error) {
-	return hash.Hash{}, nil, nil, fmt.Errorf("not supported")
+	fmt.Println("calling Sources")
+	id := rcs.getRepoId()
+	req := &remotesapi.ListTableFilesRequest{RepoId: id, RepoPath: "", RepoToken: ""}
+	resp, err := rcs.client.ListTableFiles(ctx, req)
+	if err != nil {
+		return hash.Hash{}, nil, nil, fmt.Errorf("failed to list table files: %w", err)
+	}
+	sourceFiles := getTableFiles(rcs.client, resp.TableFileInfo)
+	// TODO: remove this
+	for _, nfo := range resp.TableFileInfo {
+		fmt.Println(nfo)
+	}
+	appendixFiles := getTableFiles(rcs.client, resp.AppendixTableFileInfo)
+	return hash.New(resp.RootHash), sourceFiles, appendixFiles, nil
+}
+
+func getTableFiles(client Client, infoList []*remotesapi.TableFileInfo) []chunks.TableFile {
+	tableFiles := make([]chunks.TableFile, 0)
+	for _, nfo := range infoList {
+		tableFiles = append(tableFiles, RemoteTableFile{client, nfo})
+	}
+	return tableFiles
 }
 
 func (rcs *RemoteChunkStore) Size(ctx context.Context) (uint64, error) {
-	return 0, fmt.Errorf("not supported")
+	fmt.Println("calling Size")
+	return rcs.repoSize, nil
 }
 
 func (rcs *RemoteChunkStore) WriteTableFile(ctx context.Context, fileId string, numChunks int, contentHash []byte, getRd func() (io.ReadCloser, uint64, error)) error {

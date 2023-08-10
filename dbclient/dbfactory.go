@@ -10,10 +10,18 @@ import (
 	"github.com/dolthub/dolt/go/store/datas"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
+	"github.com/protosio/distributeddolt/proto"
 )
 
+type Client interface {
+	proto.PingerClient
+	proto.DBSyncerClient
+	remotesapi.ChunkStoreServiceClient
+	proto.FileDownloaderClient
+}
+
 type ClientRetriever interface {
-	GetCSClient(peerID string) (remotesapi.ChunkStoreServiceClient, error)
+	GetClient(peerID string) (Client, error)
 }
 
 func NewCustomFactory(cr ClientRetriever) CustomFactory {
@@ -45,7 +53,7 @@ func (fact CustomFactory) CreateDB(ctx context.Context, nbf *types.NomsBinFormat
 
 func (fact CustomFactory) newChunkStore(peerID string, nbfVersion string) (chunks.ChunkStore, error) {
 
-	client, err := fact.cr.GetCSClient(peerID)
+	client, err := fact.cr.GetClient(peerID)
 	if err != nil {
 		return nil, fmt.Errorf("could not get client for '%s': %w", peerID, err)
 	}

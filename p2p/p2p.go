@@ -36,14 +36,16 @@ const (
 type DB interface {
 	EnableSync(cr dbclient.ClientRetriever) error
 	GetChunkStore() (chunks.ChunkStore, error)
+	GetFilePath() string
 	AddRemote(peerID string) error
 	RemoveRemote(peerID string) error
 }
 
-type Client struct {
+type P2PClient struct {
 	proto.PingerClient
 	proto.DBSyncerClient
 	remotesapi.ChunkStoreServiceClient
+	proto.FileDownloaderClient
 }
 
 type P2P struct {
@@ -60,34 +62,22 @@ func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
 }
 
-func (p2p *P2P) GetClient(id string) (*Client, error) {
+func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
 	clientIface, found := p2p.clients.Get(id)
 	if !found {
 		return nil, fmt.Errorf("Client %s not found", id)
 	}
-	client, ok := clientIface.(*Client)
+	client, ok := clientIface.(*P2PClient)
 	if !ok {
 		return nil, fmt.Errorf("Client %s not found", id)
 	}
 	return client, nil
 }
 
-func (p2p *P2P) GetCSClient(id string) (remotesapi.ChunkStoreServiceClient, error) {
-	clientIface, found := p2p.clients.Get(id)
-	if !found {
-		return nil, fmt.Errorf("Client %s not found", id)
-	}
-	client, ok := clientIface.(*Client)
-	if !ok {
-		return nil, fmt.Errorf("Client %s not found", id)
-	}
-	return client, nil
-}
-
-func (p2p *P2P) GetAllClients() map[string]*Client {
-	clients := make(map[string]*Client)
+func (p2p *P2P) GetAllClients() map[string]*P2PClient {
+	clients := make(map[string]*P2PClient)
 	for clientTuble := range p2p.clients.IterBuffered() {
-		client, ok := clientTuble.Val.(*Client)
+		client, ok := clientTuble.Val.(*P2PClient)
 		if !ok {
 			p2p.log.Warnf("Client %s not found", clientTuble.Key)
 		}
@@ -149,11 +139,13 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				// client
 				pingerClient := proto.NewPingerClient(conn)
 				dbSyncerClient := proto.NewDBSyncerClient(conn)
+				fileDownloaderClient := proto.NewFileDownloaderClient(conn)
 				csClient := remotesapi.NewChunkStoreServiceClient(conn)
-				client := &Client{
+				client := &P2PClient{
 					pingerClient,
 					dbSyncerClient,
 					csClient,
+					fileDownloaderClient,
 				}
 
 				// test connectivity with a ping
@@ -210,11 +202,12 @@ func (p2p *P2P) StartServer() (func() error, error) {
 		return func() error { return nil }, fmt.Errorf("error starting p2p server: error getting chunk store: %s", err.Error())
 	}
 	chunkStoreCache := dbserver.NewCSCache(cs.(remotesrv.RemoteSrvStore))
-	chunkStoreServer := dbserver.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache)
+	chunkStoreServer := dbserver.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache, p2p.db.GetFilePath())
 
 	// register grpc servers
 	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())
 	proto.RegisterPingerServer(grpcServer, &pinger.Server{})
+	proto.RegisterFileDownloaderServer(grpcServer, chunkStoreServer)
 	remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
 
 	// serve grpc server over libp2p host
@@ -228,6 +221,49 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	}()
 
 	err = p2p.host.Network().Listen()
+	if err != nil {
+		return func() error { return nil }, fmt.Errorf("failed to listen: %w", err)
+	}
+
+	peerDiscoveryStopper := p2p.peerDiscoveryProcessor()
+
+	mdnsService := mdns.NewMdnsService(p2p.host, "protos", p2p)
+	if err := mdnsService.Start(); err != nil {
+		panic(err)
+	}
+
+	stopper := func() error {
+		p2p.log.Debug("Stopping p2p server")
+		peerDiscoveryStopper()
+		mdnsService.Close()
+		grpcServer.GracefulStop()
+		return p2p.host.Close()
+	}
+
+	return stopper, nil
+
+}
+
+func (p2p *P2P) StartServerInit() (func() error, error) {
+
+	p2p.log.Infof("Starting p2p server init init mode, using id %s", p2p.host.ID())
+	ctx := context.TODO()
+
+	// register grpc servers
+	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())
+	proto.RegisterPingerServer(grpcServer, &pinger.Server{})
+
+	// serve grpc server over libp2p host
+	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
+	go func() {
+		err := grpcServer.Serve(grpcListener)
+		if err != nil {
+			p2p.log.Error("grpc serve error: ", err)
+			panic(err)
+		}
+	}()
+
+	err := p2p.host.Network().Listen()
 	if err != nil {
 		return func() error { return nil }, fmt.Errorf("failed to listen: %w", err)
 	}
