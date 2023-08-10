@@ -50,25 +50,6 @@ func (rtf RemoteTableFile) Open(ctx context.Context) (io.ReadCloser, uint64, err
 		return nil, 0, fmt.Errorf("client.LoadFile: %w", err)
 	}
 
-	r, w := io.Pipe()
-	message := new(proto.DownloadResponse)
-	err = response.RecvMsg(message)
-	if err != nil {
-		_ = w.Close()
-		if err == io.EOF {
-			return nil, 0, fmt.Errorf("end of file")
-		}
-		return nil, 0, fmt.Errorf("error receiving file: %w", err)
-	} else {
-		if len(message.GetChunk()) > 0 {
-			_, err = w.Write(message.Chunk)
-			if err != nil {
-				_ = response.CloseSend()
-			}
-		}
-		message.Chunk = message.Chunk[:0]
-	}
-
 	md, err := response.Header()
 	if err != nil {
 		return nil, 0, fmt.Errorf("response.Header: %w", err)
@@ -81,9 +62,10 @@ func (rtf RemoteTableFile) Open(ctx context.Context) (io.ReadCloser, uint64, err
 			return nil, 0, fmt.Errorf("response.Header: file size header not valid: %w", err)
 		}
 	} else {
-		return nil, 0, fmt.Errorf("response.Header: file size header not present")
+		size = 0
 	}
 
+	r, w := io.Pipe()
 	go copyFromResponse(w, response)
 
 	return r, size, nil

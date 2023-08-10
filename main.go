@@ -33,7 +33,7 @@ func p2pRun(dbDir string, port int) error {
 	log.SetOutput(ew)
 
 	peerListChan := make(chan peer.IDSlice, 1000)
-	p2pmgr, err := p2p.NewManager(port, peerListChan, log, dbi)
+	p2pmgr, err := p2p.NewManager(dbDir, port, peerListChan, log, dbi)
 	if err != nil {
 		return err
 	}
@@ -61,15 +61,19 @@ func p2pRun(dbDir string, port int) error {
 	return nil
 }
 
-func Init(localinit bool, port int) error {
-	if localinit {
+func Init(localInit bool, peerInit string, port int) error {
+	if localInit && peerInit != "" {
+		return fmt.Errorf("cannot specify both local and peer init")
+	}
+
+	if localInit {
 		return dbi.InitLocal()
-	} else {
+	} else if peerInit != "" {
 		// ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 		// log.SetOutput(ew)
 
 		peerListChan := make(chan peer.IDSlice, 1000)
-		p2pmgr, err := p2p.NewManager(port, peerListChan, log, dbi)
+		p2pmgr, err := p2p.NewManager(dbDir, port, peerListChan, log, dbi)
 		if err != nil {
 			return err
 		}
@@ -82,7 +86,7 @@ func Init(localinit bool, port int) error {
 			}
 		}()
 
-		err = dbi.InitFromPeer()
+		err = dbi.InitFromPeer(peerInit)
 		if err != nil {
 			return fmt.Errorf("error initialising from peer: %w", err)
 		}
@@ -93,12 +97,15 @@ func Init(localinit bool, port int) error {
 		}
 
 		return nil
+	} else {
+		return fmt.Errorf("must specify either local or peer init")
 	}
 }
 
 func main() {
 	var port int
-	var localinit bool
+	var localInit bool
+	var peerInit string
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
@@ -151,13 +158,18 @@ func main() {
 					&cli.BoolFlag{
 						Name:        "local",
 						Value:       false,
-						Destination: &localinit,
+						Destination: &localInit,
+					},
+					&cli.StringFlag{
+						Name:        "peer",
+						Value:       "",
+						Destination: &peerInit,
 					},
 				},
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return Init(localinit, port)
+					return Init(localInit, peerInit, port)
 				},
 			},
 			{

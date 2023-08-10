@@ -3,6 +3,7 @@ package p2p
 import (
 	"context"
 	"fmt"
+	"os"
 	"time"
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
@@ -65,11 +66,11 @@ func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
 	clientIface, found := p2p.clients.Get(id)
 	if !found {
-		return nil, fmt.Errorf("Client %s not found", id)
+		return nil, fmt.Errorf("client %s not found", id)
 	}
 	client, ok := clientIface.(*P2PClient)
 	if !ok {
-		return nil, fmt.Errorf("Client %s not found", id)
+		return nil, fmt.Errorf("client %s not found", id)
 	}
 	return client, nil
 }
@@ -288,7 +289,7 @@ func (p2p *P2P) StartServerInit() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db DB) (*P2P, error) {
+func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db DB) (*P2P, error) {
 	p2p := &P2P{
 		PeerChan:     make(chan peer.AddrInfo),
 		peerListChan: peerListChan,
@@ -299,9 +300,38 @@ func NewManager(port int, peerListChan chan peer.IDSlice, logger *logrus.Logger,
 
 	p2p.broadcastClient = &BroadcastClient{p2p: p2p}
 
-	prvKey, _, err := crypto.GenerateKeyPair(crypto.Ed25519, 0)
+	var prvKey crypto.PrivKey
+	keyFile := workdir + "/key"
+	fileInfo, err := os.Stat(keyFile)
 	if err != nil {
-		return nil, err
+		if os.IsNotExist(err) {
+			prvKey, _, err = crypto.GenerateKeyPair(crypto.Ed25519, 0)
+			if err != nil {
+				return nil, err
+			}
+			prvKeyBytes, err := crypto.MarshalPrivateKey(prvKey)
+			if err != nil {
+				return nil, err
+			}
+			err = os.WriteFile(keyFile, prvKeyBytes, 0600)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	} else {
+		if fileInfo.IsDir() {
+			return nil, fmt.Errorf("key file %s is a directory", keyFile)
+		}
+		prvKeyBytes, err := os.ReadFile(keyFile)
+		if err != nil {
+			return nil, err
+		}
+		prvKey, err = crypto.UnmarshalPrivateKey(prvKeyBytes)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	con, err := connmgr.NewConnManager(100, 400)

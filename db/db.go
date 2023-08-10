@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/bokwoon95/sq"
@@ -13,12 +14,10 @@ import (
 	"github.com/dolthub/dolt/go/libraries/doltcore/dbfactory"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
-	"github.com/dolthub/dolt/go/libraries/doltcore/env/actions"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/binlogreplication"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/datas"
-	"github.com/dolthub/dolt/go/store/types"
 	dd "github.com/dolthub/driver"
 	doltSQL "github.com/dolthub/go-mysql-server/sql"
 	"github.com/protosio/distributeddolt/dbclient"
@@ -203,108 +202,51 @@ func (db *DB) EnableSync(cr dbclient.ClientRetriever) error {
 func (db *DB) AddRemote(peerID string) error {
 
 	db.log.Infof("Adding remote for peer %s", peerID)
-	r := env.NewRemote(peerID, fmt.Sprintf("protos://%s", peerID), map[string]string{})
+
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
-		dbEnv = db.dbEnvInit
-		ddb, err := r.GetRemoteDB(context.TODO(), types.Format_Default, dbEnv)
-		if err != nil {
-			return fmt.Errorf("failed to get remote db: %v", err)
-		}
+		db.log.Infof("Can't add remote for peer %s. DB env not found yet", peerID)
+		return nil
+	}
 
-		workingDir, err := filesys.LocalFS.Abs(db.workingDir)
+	remotes, err := dbEnv.GetRemotes()
+	if err != nil {
+		return fmt.Errorf("failed to get remotes: %v", err)
+	}
+	if _, ok := remotes[peerID]; !ok {
+		r := env.NewRemote(peerID, fmt.Sprintf("protos://%s", peerID), map[string]string{})
+		err := dbEnv.AddRemote(r)
 		if err != nil {
-			return fmt.Errorf("failed to get absolute path for %s: %v", workingDir, err)
-		}
-
-		dbEnv, err = actions.EnvForClone(context.TODO(), ddb.ValueReadWriter().Format(), r, workingDir+"/"+dbName, db.dbEnvInit.FS, db.dbEnvInit.Version, env.GetCurrentUserHomeDir)
-		if err != nil {
-			return fmt.Errorf("failed to create clone env: %v", err)
-		}
-
-		workingDirFS, err := filesys.LocalFS.WithWorkingDir(workingDir)
-		if err != nil {
-			return fmt.Errorf("failed to open db: %w", err)
-		}
-
-		db.mrEnv, err = env.MultiEnvForDirectory(context.TODO(), dbEnv.Config.WriteableConfig(), workingDirFS, dbEnv.Version, dbEnv.IgnoreLockFile, dbEnv)
-		if err != nil {
-			return fmt.Errorf("failed to create mr env: %v", err)
+			return fmt.Errorf("failed to add remote: %w", err)
 		}
 	} else {
-		remotes, err := dbEnv.GetRemotes()
-		if err != nil {
-			return fmt.Errorf("failed to get remotes: %v", err)
-		}
-		if _, ok := remotes[peerID]; !ok {
-			err := dbEnv.AddRemote(r)
-			if err != nil {
-				return fmt.Errorf("failed to add remote: %w", err)
-			}
-		} else {
-			db.log.Infof("Remote for peer %s already exists", peerID)
-		}
+		db.log.Infof("Remote for peer %s already exists", peerID)
 	}
 
 	return nil
 }
 
-func (db *DB) InitFromPeer() error {
-	db.log.Info("Initializing from first peer")
-	var peerID string
-	for {
-		dbEnv := db.mrEnv.GetEnv(dbName)
-		if dbEnv == nil {
-			db.log.Info("init from peer: db env is nil")
-			time.Sleep(2 * time.Second)
-			continue
-		}
-		remotes, err := dbEnv.GetRemotes()
+func (db *DB) InitFromPeer(peerID string) error {
+	db.log.Infof("Initializing from peer %s", peerID)
+
+	tries := 0
+	for tries < 10 {
+		query := fmt.Sprintf("CALL DOLT_CLONE('protos://%s/%s');", peerID, dbName)
+		err := db.Query(query, true)
 		if err != nil {
-			db.log.Warnf("init from peer: failed to get remotes: %v", err)
-		}
-		if len(remotes) == 0 {
-			db.log.Info("waiting for at least one peer to be added")
-			time.Sleep(2 * time.Second)
-			continue
-		} else {
-			for k := range remotes {
-				peerID = k
-				break
+			if strings.Contains(err.Error(), "could not get client") {
+				db.log.Infof("Peer %s not available yet. Retrying...", peerID)
+				tries++
+				time.Sleep(2 * time.Second)
+				continue
 			}
-			break
+			return fmt.Errorf("failed to clone db: %w", err)
 		}
+		db.log.Infof("Successfully cloned db from peer %s", peerID)
+		return nil
 	}
 
-	db.log.Infof("initializing from peer %s", peerID)
-
-	err := db.Query(fmt.Sprintf("CALL DOLT_CLONE('protos://%s', 'main');", peerID), true)
-	if err != nil {
-		return fmt.Errorf("failed to clone db: %w", err)
-	}
-
-	// dbEnv := db.mrEnv.GetEnv(dbName)
-	// if dbEnv == nil {
-	// 	return fmt.Errorf("init from peer: db env is nil")
-	// }
-	// remotes, err := dbEnv.GetRemotes()
-	// if err != nil {
-	// 	return fmt.Errorf("init from peer: failed to get remotes: %v", err)
-	// }
-
-	// r := remotes[peerID]
-
-	// ddb, err := r.GetRemoteDB(context.Background(), types.Format_Default, dbEnv)
-	// if err != nil {
-	// 	return fmt.Errorf("init from peer: failed to get remote db: %v", err)
-	// }
-
-	// err = actions.CloneRemote(context.Background(), ddb, peerID, "main", dbEnv)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to clone db: %w", err)
-	// }
-
-	return nil
+	return fmt.Errorf("failed to clone db from peer %s. Peer not found", peerID)
 }
 
 func (db *DB) RemoveRemote(peerID string) error {
