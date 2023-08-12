@@ -8,8 +8,6 @@ import (
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
 	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
-	"github.com/dolthub/dolt/go/libraries/doltcore/remotesrv"
-	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -21,8 +19,7 @@ import (
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/protosio/distributeddolt/db"
-	"github.com/protosio/distributeddolt/db/server"
-	"github.com/protosio/distributeddolt/pinger"
+	pinger "github.com/protosio/distributeddolt/p2p/server"
 	"github.com/protosio/distributeddolt/proto"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -33,13 +30,13 @@ const (
 	protosRPCProtocol = protocol.ID("/protos/rpc/0.0.1")
 )
 
-type DB interface {
-	EnableSync(syncer db.Syncer) error
-	GetChunkStore() (chunks.ChunkStore, error)
-	GetFilePath() string
-	AddRemote(peerID string) error
-	RemoveRemote(peerID string) error
-}
+// type DB interface {
+// 	EnableSync(syncer db.Syncer) error
+// 	GetChunkStore() (chunks.ChunkStore, error)
+// 	GetFilePath() string
+// 	AddRemote(peerID string) error
+// 	RemoveRemote(peerID string) error
+// }
 
 type P2PClient struct {
 	proto.PingerClient
@@ -49,9 +46,11 @@ type P2PClient struct {
 }
 
 type P2P struct {
-	db           DB
+	// db           DB
+	peerHandler  db.PeerHandler
 	log          *logrus.Logger
 	host         host.Host
+	grpcServer   *grpc.Server
 	PeerChan     chan peer.AddrInfo
 	peerListChan chan peer.IDSlice
 	clients      cmap.ConcurrentMap
@@ -143,9 +142,11 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				p2p.log.Infof("Connected to %s", peer.ID.String())
 				p2p.clients.Set(peer.ID.String(), client)
 				p2p.peerListChan <- p2p.host.Network().Peers()
-				err = p2p.db.AddRemote(peer.ID.String())
-				if err != nil {
-					p2p.log.Errorf("Failed to add DB remote for '%s': %v", peer.ID.String(), err)
+				if p2p.peerHandler != nil {
+					err = p2p.peerHandler.AddPeer(peer.ID.String())
+					if err != nil {
+						p2p.log.Errorf("Failed to add DB remote for '%s': %v", peer.ID.String(), err)
+					}
 				}
 
 			case <-stopSignal:
@@ -168,9 +169,19 @@ func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) 
 		p2p.log.Errorf("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
 	}
 	p2p.clients.Remove(conn.RemotePeer().String())
-	if err := p2p.db.RemoveRemote(conn.RemotePeer().String()); err != nil {
-		p2p.log.Errorf("Failed to remove DB remote for '%s': %v", conn.RemotePeer().String(), err)
+	if p2p.peerHandler != nil {
+		if err := p2p.peerHandler.RemovePeer(conn.RemotePeer().String()); err != nil {
+			p2p.log.Errorf("Failed to remove DB peer for '%s': %v", conn.RemotePeer().String(), err)
+		}
 	}
+}
+
+func (p2p *P2P) GetGRPCServer() *grpc.Server {
+	return p2p.grpcServer
+}
+
+func (p2p *P2P) RegisterPeerHandler(handler db.PeerHandler) {
+	p2p.peerHandler = handler
 }
 
 // StartServer starts listening for p2p connections
@@ -179,67 +190,13 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	p2p.log.Infof("Starting p2p server using id %s", p2p.host.ID())
 	ctx := context.TODO()
 
-	// prepare dolt chunk store server
-	cs, err := p2p.db.GetChunkStore()
-	if err != nil {
-		return func() error { return nil }, fmt.Errorf("error starting p2p server: error getting chunk store: %s", err.Error())
-	}
-	chunkStoreCache := server.NewCSCache(cs.(remotesrv.RemoteSrvStore))
-	chunkStoreServer := server.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache, p2p.db.GetFilePath())
-
-	// register grpc servers
-	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())
-	proto.RegisterPingerServer(grpcServer, &pinger.Server{})
-	proto.RegisterFileDownloaderServer(grpcServer, chunkStoreServer)
-	remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
+	// register internal grpc servers
+	proto.RegisterPingerServer(p2p.grpcServer, &pinger.Server{})
 
 	// serve grpc server over libp2p host
 	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
 	go func() {
-		err := grpcServer.Serve(grpcListener)
-		if err != nil {
-			p2p.log.Error("grpc serve error: ", err)
-			panic(err)
-		}
-	}()
-
-	err = p2p.host.Network().Listen()
-	if err != nil {
-		return func() error { return nil }, fmt.Errorf("failed to listen: %w", err)
-	}
-
-	peerDiscoveryStopper := p2p.peerDiscoveryProcessor()
-
-	mdnsService := mdns.NewMdnsService(p2p.host, "protos", p2p)
-	if err := mdnsService.Start(); err != nil {
-		panic(err)
-	}
-
-	stopper := func() error {
-		p2p.log.Debug("Stopping p2p server")
-		peerDiscoveryStopper()
-		mdnsService.Close()
-		grpcServer.GracefulStop()
-		return p2p.host.Close()
-	}
-
-	return stopper, nil
-
-}
-
-func (p2p *P2P) StartServerInit() (func() error, error) {
-
-	p2p.log.Infof("Starting p2p server init init mode, using id %s", p2p.host.ID())
-	ctx := context.TODO()
-
-	// register grpc servers
-	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())
-	proto.RegisterPingerServer(grpcServer, &pinger.Server{})
-
-	// serve grpc server over libp2p host
-	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
-	go func() {
-		err := grpcServer.Serve(grpcListener)
+		err := p2p.grpcServer.Serve(grpcListener)
 		if err != nil {
 			p2p.log.Error("grpc serve error: ", err)
 			panic(err)
@@ -262,7 +219,7 @@ func (p2p *P2P) StartServerInit() (func() error, error) {
 		p2p.log.Debug("Stopping p2p server")
 		peerDiscoveryStopper()
 		mdnsService.Close()
-		grpcServer.GracefulStop()
+		p2p.grpcServer.GracefulStop()
 		return p2p.host.Close()
 	}
 
@@ -271,13 +228,13 @@ func (p2p *P2P) StartServerInit() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, db DB) (*P2P, error) {
+func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger) (*P2P, error) {
 	p2p := &P2P{
 		PeerChan:     make(chan peer.AddrInfo),
 		peerListChan: peerListChan,
 		clients:      cmap.New(),
 		log:          logger,
-		db:           db,
+		grpcServer:   grpc.NewServer(p2pgrpc.WithP2PCredentials()),
 	}
 
 	var prvKey crypto.PrivKey
@@ -338,11 +295,6 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 		DisconnectedF: p2p.closeConnectionHandler,
 	}
 	p2p.host.Network().Notify(&nb)
-
-	err = p2p.db.EnableSync(p2p)
-	if err != nil {
-		return nil, fmt.Errorf("failed to enable db sync: %w", err)
-	}
 
 	p2p.log.Debugf("Using host with ID '%s'", host.ID().String())
 	return p2p, nil

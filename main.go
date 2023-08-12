@@ -15,6 +15,8 @@ var dbi *db.DB
 var log = logrus.New()
 var dbDir string
 var commitListChan = make(chan []db.Commit, 100)
+var peerListChan = make(chan peer.IDSlice, 1000)
+var p2pmgr *p2p.P2P
 
 type EventWriter struct {
 	eventChan chan []byte
@@ -31,12 +33,6 @@ func p2pRun(dbDir string, port int) error {
 
 	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 	log.SetOutput(ew)
-
-	peerListChan := make(chan peer.IDSlice, 1000)
-	p2pmgr, err := p2p.NewManager(dbDir, port, peerListChan, log, dbi)
-	if err != nil {
-		return err
-	}
 
 	p2pStopper, err := p2pmgr.StartServer()
 	if err != nil {
@@ -69,18 +65,10 @@ func Init(localInit bool, peerInit string, port int) error {
 	if localInit {
 		return dbi.InitLocal()
 	} else if peerInit != "" {
-		// ew := &EventWriter{eventChan: make(chan []byte, 5000)}
-		// log.SetOutput(ew)
-
-		peerListChan := make(chan peer.IDSlice, 1000)
-		p2pmgr, err := p2p.NewManager(dbDir, port, peerListChan, log, dbi)
-		if err != nil {
-			return err
-		}
-
 		var p2pStopper func() error
+		var err error
 		go func() {
-			p2pStopper, err = p2pmgr.StartServerInit()
+			p2pStopper, err = p2pmgr.StartServer()
 			if err != nil {
 				panic(err)
 			}
@@ -109,7 +97,13 @@ func main() {
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
-		dbi, err = db.New(dbDir, commitListChan, log)
+
+		p2pmgr, err = p2p.NewManager(dbDir, port, peerListChan, log)
+		if err != nil {
+			return err
+		}
+
+		dbi, err = db.New(dbDir, commitListChan, p2pmgr, p2pmgr, log)
 		if err != nil {
 			log.Fatal(err)
 		}

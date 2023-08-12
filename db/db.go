@@ -11,9 +11,11 @@ import (
 
 	"github.com/bokwoon95/sq"
 	"github.com/dolthub/dolt/go/cmd/dolt/commands/engine"
+	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/dolthub/dolt/go/libraries/doltcore/dbfactory"
 	"github.com/dolthub/dolt/go/libraries/doltcore/doltdb"
 	"github.com/dolthub/dolt/go/libraries/doltcore/env"
+	"github.com/dolthub/dolt/go/libraries/doltcore/remotesrv"
 	"github.com/dolthub/dolt/go/libraries/doltcore/sqle/binlogreplication"
 	"github.com/dolthub/dolt/go/libraries/utils/filesys"
 	"github.com/dolthub/dolt/go/store/chunks"
@@ -21,6 +23,8 @@ import (
 	dd "github.com/dolthub/driver"
 	doltSQL "github.com/dolthub/go-mysql-server/sql"
 	"github.com/protosio/distributeddolt/db/client"
+	"github.com/protosio/distributeddolt/db/server"
+	"github.com/protosio/distributeddolt/proto"
 	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
 )
@@ -45,28 +49,32 @@ var dbName = "protos"
 var tableName = "testtable"
 
 type DB struct {
-	syncer         Syncer
-	stopper        func() error
-	commitListChan chan []Commit
-	dbEnvInit      *env.DoltEnv
-	mrEnv          *env.MultiRepoEnv
-	sqle           *engine.SqlEngine
-	sqld           *sql.DB
-	sqlCtx         *doltSQL.Context
-	workingDir     string
-	log            *logrus.Logger
+	syncer          Syncer
+	stopper         func() error
+	commitListChan  chan []Commit
+	dbEnvInit       *env.DoltEnv
+	mrEnv           *env.MultiRepoEnv
+	sqle            *engine.SqlEngine
+	sqld            *sql.DB
+	sqlCtx          *doltSQL.Context
+	workingDir      string
+	peerRegistrator PeerHandlerRegistrator
+	grpcRetriever   GRPCServerRetriever
+	log             *logrus.Logger
 }
 
-func New(dir string, commitListChan chan []Commit, logger *logrus.Logger) (*DB, error) {
+func New(dir string, commitListChan chan []Commit, peerRegistrator PeerHandlerRegistrator, grpcRetriever GRPCServerRetriever, logger *logrus.Logger) (*DB, error) {
 	workingDir, err := filesys.LocalFS.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path for %s: %v", workingDir, err)
 	}
 
 	db := &DB{
-		workingDir:     workingDir,
-		log:            logger,
-		commitListChan: commitListChan,
+		workingDir:      workingDir,
+		peerRegistrator: peerRegistrator,
+		grpcRetriever:   grpcRetriever,
+		log:             logger,
+		commitListChan:  commitListChan,
 	}
 
 	return db, nil
@@ -126,6 +134,21 @@ func (db *DB) Open() error {
 	}
 
 	db.sqld = sql.OpenDB(&Connector{driver: &doltDriver{conn: &dd.DoltConn{DataSource: &dd.DoltDataSource{}, SE: db.sqle, GmsCtx: db.sqlCtx}}})
+
+	db.peerRegistrator.RegisterPeerHandler(db)
+
+	// prepare dolt chunk store server
+	cs, err := db.GetChunkStore()
+	if err != nil {
+		return fmt.Errorf("error starting p2p server: error getting chunk store: %s", err.Error())
+	}
+	chunkStoreCache := server.NewCSCache(cs.(remotesrv.RemoteSrvStore))
+	chunkStoreServer := server.NewServerChunkStore(logrus.NewEntry(db.log), chunkStoreCache, db.GetFilePath())
+
+	// register grpc servers
+	grpcServer := db.grpcRetriever.GetGRPCServer()
+	proto.RegisterFileDownloaderServer(grpcServer, chunkStoreServer)
+	remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
 
 	return nil
 }
@@ -206,7 +229,7 @@ func (db *DB) EnableSync(syncer Syncer) error {
 	return nil
 }
 
-func (db *DB) AddRemote(peerID string) error {
+func (db *DB) AddPeer(peerID string) error {
 
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
@@ -233,7 +256,7 @@ func (db *DB) AddRemote(peerID string) error {
 	return nil
 }
 
-func (db *DB) RemoveRemote(peerID string) error {
+func (db *DB) RemovePeer(peerID string) error {
 
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
