@@ -1,4 +1,4 @@
-package dbserver
+package server
 
 import (
 	"strconv"

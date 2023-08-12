@@ -20,13 +20,13 @@ import (
 	"github.com/dolthub/dolt/go/store/datas"
 	dd "github.com/dolthub/driver"
 	doltSQL "github.com/dolthub/go-mysql-server/sql"
-	"github.com/protosio/distributeddolt/dbclient"
+	"github.com/protosio/distributeddolt/db/client"
 	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
 )
 
 type Syncer interface {
-	dbclient.ClientRetriever
+	client.ClientRetriever
 	AdvertiseHead(head string) error
 }
 
@@ -201,7 +201,7 @@ func (db *DB) GetChunkStore() (chunks.ChunkStore, error) {
 
 func (db *DB) EnableSync(syncer Syncer) error {
 	db.log.Info("Enabling p2p sync")
-	dbfactory.RegisterFactory("protos", dbclient.NewCustomFactory(syncer))
+	dbfactory.RegisterFactory("protos", client.NewCustomFactory(syncer))
 	db.syncer = syncer
 	return nil
 }

@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/protosio/distributeddolt/dbclient"
+	"github.com/protosio/distributeddolt/db/client"
 	"github.com/protosio/distributeddolt/proto"
 )
 
@@ -50,7 +50,7 @@ func (p2p *P2P) AdvertiseHead(head string) error {
 	return nil
 }
 
-func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
+func (p2p *P2P) GetClient(id string) (client.Client, error) {
 	clientIface, found := p2p.clients.Get(id)
 	if !found {
 		return nil, fmt.Errorf("client %s not found", id)

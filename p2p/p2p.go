@@ -21,7 +21,7 @@ import (
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/protosio/distributeddolt/db"
-	"github.com/protosio/distributeddolt/dbserver"
+	"github.com/protosio/distributeddolt/db/server"
 	"github.com/protosio/distributeddolt/pinger"
 	"github.com/protosio/distributeddolt/proto"
 	"github.com/sirupsen/logrus"
@@ -184,8 +184,8 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	if err != nil {
 		return func() error { return nil }, fmt.Errorf("error starting p2p server: error getting chunk store: %s", err.Error())
 	}
-	chunkStoreCache := dbserver.NewCSCache(cs.(remotesrv.RemoteSrvStore))
-	chunkStoreServer := dbserver.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache, p2p.db.GetFilePath())
+	chunkStoreCache := server.NewCSCache(cs.(remotesrv.RemoteSrvStore))
+	chunkStoreServer := server.NewServerChunkStore(logrus.NewEntry(p2p.log), chunkStoreCache, p2p.db.GetFilePath())
 
 	// register grpc servers
 	grpcServer := grpc.NewServer(p2pgrpc.WithP2PCredentials())
