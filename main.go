@@ -13,7 +13,7 @@ import (
 
 var dbi *db.DB
 var log = logrus.New()
-var dbDir string
+var workDir string
 var commitListChan = make(chan []db.Commit, 100)
 var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
@@ -29,7 +29,7 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 	return len(logLine), nil
 }
 
-func p2pRun(dbDir string, port int) error {
+func p2pRun(workDir string, port int) error {
 
 	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
 	log.SetOutput(ew)
@@ -98,12 +98,12 @@ func main() {
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
 
-		p2pmgr, err = p2p.NewManager(dbDir, port, peerListChan, log)
+		p2pmgr, err = p2p.NewManager(workDir, port, peerListChan, log)
 		if err != nil {
 			return err
 		}
 
-		dbi, err = db.New(dbDir, commitListChan, p2pmgr, p2pmgr, log)
+		dbi, err = db.New(workDir, commitListChan, p2pmgr, p2pmgr, p2pmgr, log)
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -126,7 +126,7 @@ func main() {
 				Name:        "db",
 				Value:       "db",
 				Usage:       "db directory",
-				Destination: &dbDir,
+				Destination: &workDir,
 			},
 			&cli.IntFlag{
 				Name:        "port",
@@ -142,7 +142,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return p2pRun(dbDir, port)
+					return p2pRun(workDir, port)
 				},
 			},
 			{

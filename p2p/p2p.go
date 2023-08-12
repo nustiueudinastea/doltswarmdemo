@@ -19,6 +19,7 @@ import (
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/protosio/distributeddolt/db"
+	dbclient "github.com/protosio/distributeddolt/db/client"
 	pinger "github.com/protosio/distributeddolt/p2p/server"
 	"github.com/protosio/distributeddolt/proto"
 	"github.com/sirupsen/logrus"
@@ -30,14 +31,6 @@ const (
 	protosRPCProtocol = protocol.ID("/protos/rpc/0.0.1")
 )
 
-// type DB interface {
-// 	EnableSync(syncer db.Syncer) error
-// 	GetChunkStore() (chunks.ChunkStore, error)
-// 	GetFilePath() string
-// 	AddRemote(peerID string) error
-// 	RemoveRemote(peerID string) error
-// }
-
 type P2PClient struct {
 	proto.PingerClient
 	proto.DBSyncerClient
@@ -46,7 +39,6 @@ type P2PClient struct {
 }
 
 type P2P struct {
-	// db           DB
 	peerHandler  db.PeerHandler
 	log          *logrus.Logger
 	host         host.Host
@@ -60,16 +52,16 @@ func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
 }
 
-func (p2p *P2P) GetAllClients() map[string]*P2PClient {
-	clients := make(map[string]*P2PClient)
-	for clientTuble := range p2p.clients.IterBuffered() {
-		client, ok := clientTuble.Val.(*P2PClient)
-		if !ok {
-			p2p.log.Warnf("Client %s not found", clientTuble.Key)
-		}
-		clients[clientTuble.Key] = client
+func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
+	clientIface, found := p2p.clients.Get(id)
+	if !found {
+		return nil, fmt.Errorf("client %s not found", id)
 	}
-	return clients
+	client, ok := clientIface.(*P2PClient)
+	if !ok {
+		return nil, fmt.Errorf("client %s not found", id)
+	}
+	return client, nil
 }
 
 func (p2p *P2P) peerDiscoveryProcessor() func() error {

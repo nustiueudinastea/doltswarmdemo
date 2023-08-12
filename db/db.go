@@ -49,7 +49,6 @@ var dbName = "protos"
 var tableName = "testtable"
 
 type DB struct {
-	syncer          Syncer
 	stopper         func() error
 	commitListChan  chan []Commit
 	dbEnvInit       *env.DoltEnv
@@ -60,10 +59,11 @@ type DB struct {
 	workingDir      string
 	peerRegistrator PeerHandlerRegistrator
 	grpcRetriever   GRPCServerRetriever
+	clientRetriever client.ClientRetriever
 	log             *logrus.Logger
 }
 
-func New(dir string, commitListChan chan []Commit, peerRegistrator PeerHandlerRegistrator, grpcRetriever GRPCServerRetriever, logger *logrus.Logger) (*DB, error) {
+func New(dir string, commitListChan chan []Commit, peerRegistrator PeerHandlerRegistrator, grpcRetriever GRPCServerRetriever, clientRetriever client.ClientRetriever, logger *logrus.Logger) (*DB, error) {
 	workingDir, err := filesys.LocalFS.Abs(dir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get absolute path for %s: %v", workingDir, err)
@@ -73,6 +73,7 @@ func New(dir string, commitListChan chan []Commit, peerRegistrator PeerHandlerRe
 		workingDir:      workingDir,
 		peerRegistrator: peerRegistrator,
 		grpcRetriever:   grpcRetriever,
+		clientRetriever: clientRetriever,
 		log:             logger,
 		commitListChan:  commitListChan,
 	}
@@ -140,7 +141,7 @@ func (db *DB) Open() error {
 	// prepare dolt chunk store server
 	cs, err := db.GetChunkStore()
 	if err != nil {
-		return fmt.Errorf("error starting p2p server: error getting chunk store: %s", err.Error())
+		return fmt.Errorf("error getting chunk store: %s", err.Error())
 	}
 	chunkStoreCache := server.NewCSCache(cs.(remotesrv.RemoteSrvStore))
 	chunkStoreServer := server.NewServerChunkStore(logrus.NewEntry(db.log), chunkStoreCache, db.GetFilePath())
@@ -149,6 +150,9 @@ func (db *DB) Open() error {
 	grpcServer := db.grpcRetriever.GetGRPCServer()
 	proto.RegisterFileDownloaderServer(grpcServer, chunkStoreServer)
 	remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
+
+	// register new factory
+	dbfactory.RegisterFactory("protos", client.NewCustomFactory(db.clientRetriever))
 
 	return nil
 }
@@ -220,13 +224,6 @@ func (db *DB) GetChunkStore() (chunks.ChunkStore, error) {
 
 	dbd := doltdb.HackDatasDatabaseFromDoltDB(env.DoltDB)
 	return datas.ChunkStoreFromDatabase(dbd), nil
-}
-
-func (db *DB) EnableSync(syncer Syncer) error {
-	db.log.Info("Enabling p2p sync")
-	dbfactory.RegisterFactory("protos", client.NewCustomFactory(syncer))
-	db.syncer = syncer
-	return nil
 }
 
 func (db *DB) AddPeer(peerID string) error {
@@ -352,12 +349,12 @@ func (db *DB) Insert(data string) error {
 		return fmt.Errorf("failed to save record: %w", err)
 	}
 
-	if db.syncer != nil {
-		err = db.syncer.AdvertiseHead("yolo")
-		if err != nil {
-			return fmt.Errorf("failed to advertise new head: %w", err)
-		}
-	}
+	// if db.syncer != nil {
+	// 	err = db.syncer.AdvertiseHead("yolo")
+	// 	if err != nil {
+	// 		return fmt.Errorf("failed to advertise new head: %w", err)
+	// 	}
+	// }
 
 	return nil
 }
