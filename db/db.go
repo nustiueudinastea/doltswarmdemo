@@ -136,29 +136,47 @@ func (db *DB) Open() error {
 
 	db.sqld = sql.OpenDB(&Connector{driver: &doltDriver{conn: &dd.DoltConn{DataSource: &dd.DoltDataSource{}, SE: db.sqle, GmsCtx: db.sqlCtx}}})
 
-	db.peerRegistrator.RegisterPeerHandler(db)
-
-	// prepare dolt chunk store server
-	cs, err := db.GetChunkStore()
-	if err != nil {
-		return fmt.Errorf("error getting chunk store: %s", err.Error())
+	env := db.mrEnv.GetEnv(dbName)
+	if env != nil {
+		err = db.p2pSetup(true)
+		if err != nil {
+			return fmt.Errorf("failed to do p2p setup: %w", err)
+		}
+	} else {
+		err = db.p2pSetup(false)
+		if err != nil {
+			return fmt.Errorf("failed to do p2p setup: %w", err)
+		}
 	}
-	chunkStoreCache := server.NewCSCache(cs.(remotesrv.RemoteSrvStore))
-	chunkStoreServer := server.NewServerChunkStore(logrus.NewEntry(db.log), chunkStoreCache, db.GetFilePath())
 
-	// register grpc servers
-	grpcServer := db.grpcRetriever.GetGRPCServer()
-	proto.RegisterFileDownloaderServer(grpcServer, chunkStoreServer)
-	remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
+	return nil
+}
 
+func (db *DB) p2pSetup(withGRPCservers bool) error {
+	db.log.Info("Doing p2p setup")
+	db.peerRegistrator.RegisterPeerHandler(db)
 	// register new factory
 	dbfactory.RegisterFactory("protos", client.NewCustomFactory(db.clientRetriever))
+
+	if withGRPCservers {
+		// prepare dolt chunk store server
+		cs, err := db.GetChunkStore()
+		if err != nil {
+			return fmt.Errorf("error getting chunk store: %s", err.Error())
+		}
+		chunkStoreCache := server.NewCSCache(cs.(remotesrv.RemoteSrvStore))
+		chunkStoreServer := server.NewServerChunkStore(logrus.NewEntry(db.log), chunkStoreCache, db.GetFilePath())
+
+		// register grpc servers
+		grpcServer := db.grpcRetriever.GetGRPCServer()
+		proto.RegisterFileDownloaderServer(grpcServer, chunkStoreServer)
+		remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
+	}
 
 	return nil
 }
 
 func (db *DB) Close() error {
-
 	if db.mrEnv != nil {
 		dbEnv := db.mrEnv.GetEnv(dbName)
 		if dbEnv != nil {
@@ -230,7 +248,6 @@ func (db *DB) AddPeer(peerID string) error {
 
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
-		db.log.Infof("Can't add remote for peer %s. DB env not found yet", peerID)
 		return nil
 	}
 
@@ -257,7 +274,6 @@ func (db *DB) RemovePeer(peerID string) error {
 
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
-		db.log.Infof("Can't remove remote for peer %s. DB env not found yet", peerID)
 		return nil
 	}
 

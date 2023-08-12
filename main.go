@@ -98,25 +98,33 @@ func main() {
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
 
+		err = ensureDir(workDir)
+		if err != nil {
+			return fmt.Errorf("failed to create working directory: %v", err)
+		}
+
 		p2pmgr, err = p2p.NewManager(workDir, port, peerListChan, log)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to create p2p manager: %v", err)
 		}
 
 		dbi, err = db.New(workDir, commitListChan, p2pmgr, p2pmgr, p2pmgr, log)
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to create db: %v", err)
 		}
 		err = dbi.Open()
 		if err != nil {
-			log.Fatal(err)
+			return fmt.Errorf("failed to open db: %v", err)
 		}
 
 		return nil
 	}
 
 	funcAfter := func(ctx *cli.Context) error {
-		return dbi.Close()
+		if dbi != nil {
+			return dbi.Close()
+		}
+		return nil
 	}
 
 	app := &cli.App{
