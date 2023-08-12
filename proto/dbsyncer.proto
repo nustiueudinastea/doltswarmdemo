@@ -5,11 +5,11 @@ option go_package = "./proto";
 package proto;
 
 service DBSyncer {
-  rpc NewHead (NewHeadRequest) returns (NewHeadResponse) {}
+  rpc AdvertiseHead (AdvertiseHeadRequest) returns (AdvertiseHeadResponse) {}
 }
 
-message NewHeadRequest {
+message AdvertiseHeadRequest {
   string head = 1;
 }
 
-message NewHeadResponse {}
+message AdvertiseHeadResponse {}

@@ -25,6 +25,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type Syncer interface {
+	dbclient.ClientRetriever
+	AdvertiseHead(head string) error
+}
+
 type Commit struct {
 	Hash         string
 	Table        string
@@ -40,6 +45,7 @@ var dbName = "protos"
 var tableName = "testtable"
 
 type DB struct {
+	syncer         Syncer
 	stopper        func() error
 	commitListChan chan []Commit
 	dbEnvInit      *env.DoltEnv
@@ -193,15 +199,14 @@ func (db *DB) GetChunkStore() (chunks.ChunkStore, error) {
 	return datas.ChunkStoreFromDatabase(dbd), nil
 }
 
-func (db *DB) EnableSync(cr dbclient.ClientRetriever) error {
+func (db *DB) EnableSync(syncer Syncer) error {
 	db.log.Info("Enabling p2p sync")
-	dbfactory.RegisterFactory("protos", dbclient.NewCustomFactory(cr))
+	dbfactory.RegisterFactory("protos", dbclient.NewCustomFactory(syncer))
+	db.syncer = syncer
 	return nil
 }
 
 func (db *DB) AddRemote(peerID string) error {
-
-	db.log.Infof("Adding remote for peer %s", peerID)
 
 	dbEnv := db.mrEnv.GetEnv(dbName)
 	if dbEnv == nil {
@@ -222,6 +227,28 @@ func (db *DB) AddRemote(peerID string) error {
 	} else {
 		db.log.Infof("Remote for peer %s already exists", peerID)
 	}
+
+	db.log.Infof("Added remote for peer %s", peerID)
+
+	return nil
+}
+
+func (db *DB) RemoveRemote(peerID string) error {
+
+	dbEnv := db.mrEnv.GetEnv(dbName)
+	if dbEnv == nil {
+		db.log.Infof("Can't remove remote for peer %s. DB env not found yet", peerID)
+		return nil
+	}
+
+	err := dbEnv.RemoveRemote(context.Background(), peerID)
+	if err != nil {
+		if strings.Contains(err.Error(), "remote not found") {
+			return nil
+		}
+		return fmt.Errorf("failed to remove remote: %w", err)
+	}
+	db.log.Infof("Removed remote for peer %s", peerID)
 
 	return nil
 }
@@ -247,20 +274,6 @@ func (db *DB) InitFromPeer(peerID string) error {
 	}
 
 	return fmt.Errorf("failed to clone db from peer %s. Peer not found", peerID)
-}
-
-func (db *DB) RemoveRemote(peerID string) error {
-	dbEnv := db.mrEnv.GetEnv(dbName)
-	if dbEnv == nil {
-		return nil
-	}
-
-	err := dbEnv.RemoveRemote(context.Background(), peerID)
-	if err != nil {
-		return fmt.Errorf("failed to remove remote: %w", err)
-	}
-
-	return nil
 }
 
 func (db *DB) Sync(peerID string) error {
@@ -314,6 +327,13 @@ func (db *DB) Insert(data string) error {
 	err = db.Query(queryString, false)
 	if err != nil {
 		return fmt.Errorf("failed to save record: %w", err)
+	}
+
+	if db.syncer != nil {
+		err = db.syncer.AdvertiseHead("yolo")
+		if err != nil {
+			return fmt.Errorf("failed to advertise new head: %w", err)
+		}
 	}
 
 	return nil

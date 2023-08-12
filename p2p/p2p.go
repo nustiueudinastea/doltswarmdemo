@@ -20,7 +20,7 @@ import (
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
-	"github.com/protosio/distributeddolt/dbclient"
+	"github.com/protosio/distributeddolt/db"
 	"github.com/protosio/distributeddolt/dbserver"
 	"github.com/protosio/distributeddolt/pinger"
 	"github.com/protosio/distributeddolt/proto"
@@ -31,11 +31,10 @@ import (
 
 const (
 	protosRPCProtocol = protocol.ID("/protos/rpc/0.0.1")
-	// protosUpdatesTopic            = protocol.ID("/protos/updates/0.0.1")
 )
 
 type DB interface {
-	EnableSync(cr dbclient.ClientRetriever) error
+	EnableSync(syncer db.Syncer) error
 	GetChunkStore() (chunks.ChunkStore, error)
 	GetFilePath() string
 	AddRemote(peerID string) error
@@ -50,29 +49,16 @@ type P2PClient struct {
 }
 
 type P2P struct {
-	log             *logrus.Logger
-	host            host.Host
-	PeerChan        chan peer.AddrInfo
-	peerListChan    chan peer.IDSlice
-	clients         cmap.ConcurrentMap
-	broadcastClient *BroadcastClient
-	db              DB
+	db           DB
+	log          *logrus.Logger
+	host         host.Host
+	PeerChan     chan peer.AddrInfo
+	peerListChan chan peer.IDSlice
+	clients      cmap.ConcurrentMap
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
-}
-
-func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
-	clientIface, found := p2p.clients.Get(id)
-	if !found {
-		return nil, fmt.Errorf("client %s not found", id)
-	}
-	client, ok := clientIface.(*P2PClient)
-	if !ok {
-		return nil, fmt.Errorf("client %s not found", id)
-	}
-	return client, nil
 }
 
 func (p2p *P2P) GetAllClients() map[string]*P2PClient {
@@ -85,10 +71,6 @@ func (p2p *P2P) GetAllClients() map[string]*P2PClient {
 		clients[clientTuble.Key] = client
 	}
 	return clients
-}
-
-func (p2p *P2P) GetBroadcastClient() *BroadcastClient {
-	return p2p.broadcastClient
 }
 
 func (p2p *P2P) peerDiscoveryProcessor() func() error {
@@ -297,8 +279,6 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 		log:          logger,
 		db:           db,
 	}
-
-	p2p.broadcastClient = &BroadcastClient{p2p: p2p}
 
 	var prvKey crypto.PrivKey
 	keyFile := workdir + "/key"
