@@ -22,7 +22,7 @@ import (
 )
 
 type DBCache interface {
-	Get(path, nbfVerStr string) (remotesrv.RemoteSrvStore, error)
+	Get() (remotesrv.RemoteSrvStore, error)
 }
 
 type RemoteSrvStore interface {

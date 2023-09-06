@@ -35,7 +35,13 @@ type P2PClient struct {
 	proto.PingerClient
 	proto.DBSyncerClient
 	remotesapi.ChunkStoreServiceClient
-	proto.FileDownloaderClient
+	proto.DownloaderClient
+
+	id string
+}
+
+func (c *P2PClient) GetID() string {
+	return c.id
 }
 
 type P2P struct {
@@ -62,6 +68,19 @@ func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
 		return nil, fmt.Errorf("client %s not found", id)
 	}
 	return client, nil
+}
+
+func (p2p *P2P) GetClients() []dbclient.Client {
+	clients := make([]dbclient.Client, 0)
+	for clientIface := range p2p.clients.IterBuffered() {
+		client, ok := clientIface.Val.(*P2PClient)
+		if !ok {
+			panic(fmt.Errorf("client %s has incorrect type", clientIface.Key))
+		}
+
+		clients = append(clients, client)
+	}
+	return clients
 }
 
 func (p2p *P2P) peerDiscoveryProcessor() func() error {
@@ -113,13 +132,14 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				// client
 				pingerClient := proto.NewPingerClient(conn)
 				dbSyncerClient := proto.NewDBSyncerClient(conn)
-				fileDownloaderClient := proto.NewFileDownloaderClient(conn)
+				downloaderClient := proto.NewDownloaderClient(conn)
 				csClient := remotesapi.NewChunkStoreServiceClient(conn)
 				client := &P2PClient{
-					pingerClient,
-					dbSyncerClient,
-					csClient,
-					fileDownloaderClient,
+					PingerClient:            pingerClient,
+					DBSyncerClient:          dbSyncerClient,
+					ChunkStoreServiceClient: csClient,
+					DownloaderClient:        downloaderClient,
+					id:                      peer.ID.String(),
 				}
 
 				// test connectivity with a ping
@@ -133,13 +153,13 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 
 				p2p.log.Infof("Connected to %s", peer.ID.String())
 				p2p.clients.Set(peer.ID.String(), client)
-				p2p.peerListChan <- p2p.host.Network().Peers()
 				if p2p.peerHandler != nil {
 					err = p2p.peerHandler.AddPeer(peer.ID.String())
 					if err != nil {
 						p2p.log.Errorf("Failed to add DB remote for '%s': %v", peer.ID.String(), err)
 					}
 				}
+				p2p.peerListChan <- p2p.host.Network().Peers()
 
 			case <-stopSignal:
 				p2p.log.Info("Stopping peer discovery processor")

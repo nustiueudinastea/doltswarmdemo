@@ -26,6 +26,6 @@ type SingletonCSCache struct {
 	s remotesrv.RemoteSrvStore
 }
 
-func (cache SingletonCSCache) Get(path, nbfVerStr string) (remotesrv.RemoteSrvStore, error) {
+func (cache SingletonCSCache) Get() (remotesrv.RemoteSrvStore, error) {
 	return cache.s, nil
 }

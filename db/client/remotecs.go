@@ -8,16 +8,13 @@ import (
 	"sort"
 	"sync/atomic"
 
-	"github.com/cenkalti/backoff"
 	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/dolthub/dolt/go/libraries/doltcore/remotestorage"
 	"github.com/dolthub/dolt/go/store/atomicerr"
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/nbs"
-	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/sync/errgroup"
+	"github.com/protosio/distributeddolt/proto"
 )
 
 const (
@@ -114,7 +111,6 @@ func (rcs *RemoteChunkStore) GetMany(ctx context.Context, hashes hash.HashSet, f
 		atomic.AddUint64(&decompressedSize, uint64(len(c.Data())))
 		found(ctx, &c)
 	})
-	trace.SpanFromContext(ctx).SetAttributes(attribute.Int64("decompressed_bytes", int64(decompressedSize)))
 	if err != nil {
 		return err
 	}
@@ -125,6 +121,7 @@ func (rcs *RemoteChunkStore) GetMany(ctx context.Context, hashes hash.HashSet, f
 }
 
 func (rcs *RemoteChunkStore) GetManyCompressed(ctx context.Context, hashes hash.HashSet, found func(context.Context, nbs.CompressedChunk)) error {
+	fmt.Println("calling GetManyCompressed")
 	hashToChunk := rcs.cache.Get(hashes)
 
 	notCached := make([]hash.Hash, 0, len(hashes))
@@ -139,7 +136,7 @@ func (rcs *RemoteChunkStore) GetManyCompressed(ctx context.Context, hashes hash.
 	}
 
 	if len(notCached) > 0 {
-		err := rcs.readChunksAndCache(ctx, hashes, notCached, found)
+		err := rcs.downloadChunksAndCache(ctx, hashes, notCached, found)
 
 		if err != nil {
 			return err
@@ -149,186 +146,50 @@ func (rcs *RemoteChunkStore) GetManyCompressed(ctx context.Context, hashes hash.
 	return nil
 }
 
-func (rcs *RemoteChunkStore) getDLLocs(ctx context.Context, hashes []hash.Hash) (dlLocations, error) {
-
-	res := dlLocations{
-		ranges:    make(map[string]*remotestorage.GetRange),
-		refreshes: make(map[string]*locationRefresh),
-	}
-
-	// channel for receiving results from go routines making grpc calls to get download locations for chunks
-	resCh := make(chan []*remotesapi.DownloadLoc)
-
-	eg, ctx := errgroup.WithContext(ctx)
-
-	// go routine for receiving the results of the grpc calls and aggregating the results into resourceToUrlAndRanges
-	eg.Go(func() error {
-		for {
-			select {
-			case locs, ok := <-resCh:
-				if !ok {
-					return nil
-				}
-				for _, loc := range locs {
-					res.Add(loc)
-				}
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
-	})
-
-	// go routine for batching the get location requests, streaming the requests and streaming the responses.
-	eg.Go(func() error {
-		var reqs []*remotesapi.GetDownloadLocsRequest
-		hashesBytes := remotestorage.HashesToSlices(hashes)
-		batchItr(len(hashesBytes), getLocsBatchSize, func(st, end int) (stop bool) {
-			batch := hashesBytes[st:end]
-			req := &remotesapi.GetDownloadLocsRequest{RepoPath: rcs.peerID, ChunkHashes: batch}
-			reqs = append(reqs, req)
-			return false
-		})
-		op := func() error {
-			seg, ctx := errgroup.WithContext(ctx)
-			stream, err := rcs.client.StreamDownloadLocations(ctx)
-			if err != nil {
-				return remotestorage.NewRpcError(err, "StreamDownloadLocations", rcs.peerID, nil)
-			}
-			completedReqs := 0
-			// Write requests
-			seg.Go(func() error {
-				for i := range reqs {
-					if err := stream.Send(reqs[i]); err != nil {
-						return remotestorage.NewRpcError(err, "StreamDownloadLocations", rcs.peerID, reqs[i])
-					}
-				}
-				return stream.CloseSend()
-			})
-			// Read responses
-			seg.Go(func() error {
-				for {
-					resp, err := stream.Recv()
-					if err != nil {
-						if err == io.EOF {
-							return nil
-						}
-						var r *remotesapi.GetDownloadLocsRequest
-						if completedReqs < len(reqs) {
-							r = reqs[completedReqs]
-						}
-						return remotestorage.NewRpcError(err, "StreamDownloadLocations", rcs.peerID, r)
-					}
-					select {
-					case resCh <- resp.Locs:
-						completedReqs += 1
-					case <-ctx.Done():
-						return ctx.Err()
-					}
-				}
-			})
-			err = seg.Wait()
-			reqs = reqs[completedReqs:]
-			if len(reqs) == 0 {
-				close(resCh)
-			}
-			return processGrpcErr(err)
-		}
-		return backoff.Retry(op, grpcBackOff(ctx))
-	})
-
-	if err := eg.Wait(); err != nil {
-		return dlLocations{}, err
-	}
-	return res, nil
-}
-
-func (rcs *RemoteChunkStore) readChunksAndCache(ctx context.Context, hashes hash.HashSet, notCached []hash.Hash, found func(context.Context, nbs.CompressedChunk)) error {
-	// get the locations where the chunks can be downloaded from
-	dlLocs, err := rcs.getDLLocs(ctx, notCached)
-	if err != nil {
-		return err
-	}
-
-	// channel to receive chunks on
-	chunkChan := make(chan nbs.CompressedChunk, 128)
-
+func (rcs *RemoteChunkStore) downloadChunksAndCache(ctx context.Context, hashes hash.HashSet, notCached []hash.Hash, found func(context.Context, nbs.CompressedChunk)) error {
 	toSend := make(map[hash.Hash]struct{}, len(notCached))
 	for _, h := range notCached {
 		toSend[h] = struct{}{}
 	}
 
-	eg, egCtx := errgroup.WithContext(ctx)
-	// start a go routine to receive the downloaded chunks on
-	eg.Go(func() error {
-		for {
-			select {
-			case chunk, ok := <-chunkChan:
-				if !ok {
-					return nil
-				}
-				if rcs.cache.PutChunk(chunk) {
-					return fmt.Errorf("cache full")
-				}
-				h := chunk.Hash()
+	hashesToDownload := make([]string, len(notCached))
+	for i, h := range notCached {
+		hashesToDownload[i] = h.String()
+	}
 
-				if _, send := toSend[h]; send {
-					found(egCtx, chunk)
-				}
-			case <-egCtx.Done():
-				return nil
+	response, err := rcs.client.DownloadChunks(ctx, &proto.DownloadChunksRequest{Hashes: hashesToDownload})
+	if err != nil {
+		return fmt.Errorf("failed to download chunks: %w", err)
+	}
+
+	chunkMsg := new(proto.DownloadChunksResponse)
+	for {
+		err = response.RecvMsg(chunkMsg)
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("failed to receive chunk: %w", err)
+		}
+
+		if len(chunkMsg.GetChunk()) > 0 {
+			h := hash.Parse(chunkMsg.GetHash())
+			compressedChunk, err := nbs.NewCompressedChunk(h, chunkMsg.GetChunk())
+			if err != nil {
+				return fmt.Errorf("failed to create compressed chunk for hash '%s': %w", chunkMsg.GetHash(), err)
+			}
+			if rcs.cache.PutChunk(compressedChunk) {
+				return fmt.Errorf("cache full")
+			}
+
+			if _, send := toSend[h]; send {
+				found(ctx, compressedChunk)
 			}
 		}
-	})
-
-	// download the chunks and close the channel after
-	eg.Go(func() error {
-		defer close(chunkChan)
-		return rcs.downloadChunks(egCtx, dlLocs, chunkChan)
-	})
-
-	// wait for all the results to finish processing
-	return eg.Wait()
-}
-
-func (rcs *RemoteChunkStore) downloadChunks(ctx context.Context, dlLocs dlLocations, chunkChan chan nbs.CompressedChunk) error {
-	resourceGets := dlLocs.ranges
-
-	gets := aggregateDownloads(chunkAggDistance, resourceGets)
-
-	sort.Slice(gets, func(i, j int) bool {
-		return gets[j].RangeLen() < gets[i].RangeLen()
-	})
-
-	toUrl := func(ctx context.Context, lastError error, resourcePath string) (string, error) {
-		return dlLocs.refreshes[resourcePath].GetURL(ctx, lastError, rcs.client)
+		chunkMsg.Chunk = chunkMsg.Chunk[:0]
 	}
 
-	stats := remotestorage.StatsFactory()
-
-	eg, ctx := errgroup.WithContext(ctx)
-
-	// loop over all the gets that need to be downloaded and create a work function for each
-	work := make([]func() error, len(gets))
-	largeCutoff := -1
-	for i, get := range gets {
-		work[i] = get.GetDownloadFunc(ctx, stats, rcs.httpFetcher, chunkChan, toUrl)
-		if get.RangeLen() >= uint64(rcs.concurrency.LargeFetchSize) {
-			largeCutoff = i
-		}
-	}
-
-	// execute the work
-	eg.Go(func() error {
-		return concurrentExec(work[0:largeCutoff+1], rcs.concurrency.ConcurrentLargeFetches)
-	})
-	eg.Go(func() error {
-		return concurrentExec(work[largeCutoff+1:], rcs.concurrency.ConcurrentSmallFetches)
-	})
-
-	defer func() {
-		remotestorage.StatsFlusher(stats)
-	}()
-	return eg.Wait()
+	return nil
 }
 
 func (rcs *RemoteChunkStore) Has(ctx context.Context, h hash.Hash) (bool, error) {

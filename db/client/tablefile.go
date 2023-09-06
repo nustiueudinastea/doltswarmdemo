@@ -42,9 +42,9 @@ func (rtf RemoteTableFile) Open(ctx context.Context) (io.ReadCloser, uint64, err
 		}
 	}
 
-	response, err := rtf.client.Download(
+	response, err := rtf.client.DownloadFile(
 		ctx,
-		&proto.DownloadRequest{Id: rtf.info.FileId},
+		&proto.DownloadFileRequest{Id: rtf.info.FileId},
 	)
 	if err != nil {
 		return nil, 0, fmt.Errorf("client.LoadFile: %w", err)
@@ -66,7 +66,7 @@ func (rtf RemoteTableFile) Open(ctx context.Context) (io.ReadCloser, uint64, err
 	}
 
 	r, w := io.Pipe()
-	go copyFromResponse(w, response)
+	go copyFileChunksFromResponse(w, response)
 
 	return r, size, nil
 }

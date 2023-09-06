@@ -27,12 +27,8 @@ import (
 	"github.com/protosio/distributeddolt/proto"
 	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
+	"go.uber.org/multierr"
 )
-
-type Syncer interface {
-	client.ClientRetriever
-	AdvertiseHead(head string) error
-}
 
 type Commit struct {
 	Hash         string
@@ -49,7 +45,7 @@ var dbName = "protos"
 var tableName = "testtable"
 
 type DB struct {
-	stopper         func() error
+	stoppers        []func() error
 	commitListChan  chan []Commit
 	dbEnvInit       *env.DoltEnv
 	mrEnv           *env.MultiRepoEnv
@@ -166,11 +162,17 @@ func (db *DB) p2pSetup(withGRPCservers bool) error {
 		}
 		chunkStoreCache := server.NewCSCache(cs.(remotesrv.RemoteSrvStore))
 		chunkStoreServer := server.NewServerChunkStore(logrus.NewEntry(db.log), chunkStoreCache, db.GetFilePath())
+		eventQueue := make(chan server.Event, 100)
+		syncerServer := server.NewServerSyncer(logrus.NewEntry(db.log), eventQueue)
 
 		// register grpc servers
 		grpcServer := db.grpcRetriever.GetGRPCServer()
-		proto.RegisterFileDownloaderServer(grpcServer, chunkStoreServer)
+		proto.RegisterDownloaderServer(grpcServer, chunkStoreServer)
 		remotesapi.RegisterChunkStoreServiceServer(grpcServer, chunkStoreServer)
+		proto.RegisterDBSyncerServer(grpcServer, syncerServer)
+
+		// start event processor
+		db.stoppers = append(db.stoppers, db.remoteEventProcessor(eventQueue))
 	}
 
 	return nil
@@ -197,10 +199,14 @@ func (db *DB) Close() error {
 		return err
 	}
 
-	if db.stopper != nil {
-		db.stopper()
+	var finalerr error
+	for _, stopper := range db.stoppers {
+		err = stopper()
+		if err != nil {
+			finalerr = multierr.Append(finalerr, err)
+		}
 	}
-	return nil
+	return finalerr
 }
 
 func (db *DB) InitLocal() error {
@@ -227,7 +233,7 @@ func (db *DB) InitLocal() error {
 }
 
 func (db *DB) StartUpdater() {
-	db.stopper = db.commitUpdater()
+	db.stoppers = append(db.stoppers, db.commitUpdater())
 }
 
 func (db *DB) GetFilePath() string {
@@ -312,15 +318,28 @@ func (db *DB) InitFromPeer(peerID string) error {
 	return fmt.Errorf("failed to clone db from peer %s. Peer not found", peerID)
 }
 
-func (db *DB) Sync(peerID string) error {
+func (db *DB) Pull(peerID string) error {
 	err := db.Query(fmt.Sprintf("USE %s;", dbName), false)
 	if err != nil {
 		return fmt.Errorf("failed to use db: %w", err)
 	}
 
-	err = db.Query("CALL DOLT_PULL('origin', 'main');", true)
+	err = db.Query(fmt.Sprintf("CALL DOLT_CHECKOUT('%s');", peerID), false)
 	if err != nil {
-		return fmt.Errorf("failed to sync db: %w", err)
+		if strings.Contains(err.Error(), fmt.Sprintf("could not find %s", peerID)) {
+			// peer branch not found, we create it
+			err = db.Query(fmt.Sprintf("CALL DOLT_CHECKOUT('-b', '%s');", peerID), false)
+			if err != nil {
+				return fmt.Errorf("failed to checkout branch for peer %s: %w", peerID, err)
+			}
+		} else {
+			return fmt.Errorf("failed to checkout branch for peer %s: %w", peerID, err)
+		}
+	}
+
+	err = db.Query(fmt.Sprintf("CALL DOLT_PULL('%s', 'main');", peerID), true)
+	if err != nil {
+		return fmt.Errorf("failed to pull db from peer %s: %w", peerID, err)
 	}
 	return nil
 }
@@ -365,12 +384,8 @@ func (db *DB) Insert(data string) error {
 		return fmt.Errorf("failed to save record: %w", err)
 	}
 
-	// if db.syncer != nil {
-	// 	err = db.syncer.AdvertiseHead("yolo")
-	// 	if err != nil {
-	// 		return fmt.Errorf("failed to advertise new head: %w", err)
-	// 	}
-	// }
+	// async advertise new head
+	go db.AdvertiseHead()
 
 	return nil
 }
@@ -443,8 +458,9 @@ func (db *DB) PrintBranches() error {
 }
 
 func (db *DB) commitUpdater() func() error {
+	db.log.Info("Starting commit updater")
 	updateTimer := time.NewTicker(1 * time.Second)
-	commitTimmer := time.NewTicker(120 * time.Second)
+	commitTimmer := time.NewTicker(15 * time.Second)
 	stopSignal := make(chan struct{})
 	go func() {
 		for {

@@ -17,6 +17,7 @@ var workDir string
 var commitListChan = make(chan []db.Commit, 100)
 var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
+var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
 
 type EventWriter struct {
 	eventChan chan []byte
@@ -31,9 +32,6 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 
 func p2pRun(workDir string, port int) error {
 
-	ew := &EventWriter{eventChan: make(chan []byte, 5000)}
-	log.SetOutput(ew)
-
 	p2pStopper, err := p2pmgr.StartServer()
 	if err != nil {
 		return err
@@ -41,12 +39,15 @@ func p2pRun(workDir string, port int) error {
 
 	dbi.StartUpdater()
 
-	gui := createUI(peerListChan, commitListChan, ew.eventChan)
+	gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
 	// the following blocks so we can close everything else once this returns
 	err = gui.Run()
 	if err != nil {
 		panic(err)
 	}
+
+	// time.Sleep(time.Second * 300)
+
 	err = p2pStopper()
 	if err != nil {
 		return err
@@ -97,6 +98,8 @@ func main() {
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
+
+		log.SetOutput(uiLog)
 
 		err = ensureDir(workDir)
 		if err != nil {

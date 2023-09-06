@@ -19,30 +19,32 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	FileDownloader_Download_FullMethodName = "/proto.FileDownloader/Download"
+	Downloader_DownloadFile_FullMethodName   = "/proto.Downloader/DownloadFile"
+	Downloader_DownloadChunks_FullMethodName = "/proto.Downloader/DownloadChunks"
 )
 
-// FileDownloaderClient is the client API for FileDownloader service.
+// DownloaderClient is the client API for Downloader service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type FileDownloaderClient interface {
-	Download(ctx context.Context, in *DownloadRequest, opts ...grpc.CallOption) (FileDownloader_DownloadClient, error)
+type DownloaderClient interface {
+	DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (Downloader_DownloadFileClient, error)
+	DownloadChunks(ctx context.Context, in *DownloadChunksRequest, opts ...grpc.CallOption) (Downloader_DownloadChunksClient, error)
 }
 
-type fileDownloaderClient struct {
+type downloaderClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewFileDownloaderClient(cc grpc.ClientConnInterface) FileDownloaderClient {
-	return &fileDownloaderClient{cc}
+func NewDownloaderClient(cc grpc.ClientConnInterface) DownloaderClient {
+	return &downloaderClient{cc}
 }
 
-func (c *fileDownloaderClient) Download(ctx context.Context, in *DownloadRequest, opts ...grpc.CallOption) (FileDownloader_DownloadClient, error) {
-	stream, err := c.cc.NewStream(ctx, &FileDownloader_ServiceDesc.Streams[0], FileDownloader_Download_FullMethodName, opts...)
+func (c *downloaderClient) DownloadFile(ctx context.Context, in *DownloadFileRequest, opts ...grpc.CallOption) (Downloader_DownloadFileClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Downloader_ServiceDesc.Streams[0], Downloader_DownloadFile_FullMethodName, opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &fileDownloaderDownloadClient{stream}
+	x := &downloaderDownloadFileClient{stream}
 	if err := x.ClientStream.SendMsg(in); err != nil {
 		return nil, err
 	}
@@ -52,81 +54,143 @@ func (c *fileDownloaderClient) Download(ctx context.Context, in *DownloadRequest
 	return x, nil
 }
 
-type FileDownloader_DownloadClient interface {
-	Recv() (*DownloadResponse, error)
+type Downloader_DownloadFileClient interface {
+	Recv() (*DownloadFileResponse, error)
 	grpc.ClientStream
 }
 
-type fileDownloaderDownloadClient struct {
+type downloaderDownloadFileClient struct {
 	grpc.ClientStream
 }
 
-func (x *fileDownloaderDownloadClient) Recv() (*DownloadResponse, error) {
-	m := new(DownloadResponse)
+func (x *downloaderDownloadFileClient) Recv() (*DownloadFileResponse, error) {
+	m := new(DownloadFileResponse)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
 	return m, nil
 }
 
-// FileDownloaderServer is the server API for FileDownloader service.
-// All implementations should embed UnimplementedFileDownloaderServer
+func (c *downloaderClient) DownloadChunks(ctx context.Context, in *DownloadChunksRequest, opts ...grpc.CallOption) (Downloader_DownloadChunksClient, error) {
+	stream, err := c.cc.NewStream(ctx, &Downloader_ServiceDesc.Streams[1], Downloader_DownloadChunks_FullMethodName, opts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &downloaderDownloadChunksClient{stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+type Downloader_DownloadChunksClient interface {
+	Recv() (*DownloadChunksResponse, error)
+	grpc.ClientStream
+}
+
+type downloaderDownloadChunksClient struct {
+	grpc.ClientStream
+}
+
+func (x *downloaderDownloadChunksClient) Recv() (*DownloadChunksResponse, error) {
+	m := new(DownloadChunksResponse)
+	if err := x.ClientStream.RecvMsg(m); err != nil {
+		return nil, err
+	}
+	return m, nil
+}
+
+// DownloaderServer is the server API for Downloader service.
+// All implementations should embed UnimplementedDownloaderServer
 // for forward compatibility
-type FileDownloaderServer interface {
-	Download(*DownloadRequest, FileDownloader_DownloadServer) error
+type DownloaderServer interface {
+	DownloadFile(*DownloadFileRequest, Downloader_DownloadFileServer) error
+	DownloadChunks(*DownloadChunksRequest, Downloader_DownloadChunksServer) error
 }
 
-// UnimplementedFileDownloaderServer should be embedded to have forward compatible implementations.
-type UnimplementedFileDownloaderServer struct {
+// UnimplementedDownloaderServer should be embedded to have forward compatible implementations.
+type UnimplementedDownloaderServer struct {
 }
 
-func (UnimplementedFileDownloaderServer) Download(*DownloadRequest, FileDownloader_DownloadServer) error {
-	return status.Errorf(codes.Unimplemented, "method Download not implemented")
+func (UnimplementedDownloaderServer) DownloadFile(*DownloadFileRequest, Downloader_DownloadFileServer) error {
+	return status.Errorf(codes.Unimplemented, "method DownloadFile not implemented")
+}
+func (UnimplementedDownloaderServer) DownloadChunks(*DownloadChunksRequest, Downloader_DownloadChunksServer) error {
+	return status.Errorf(codes.Unimplemented, "method DownloadChunks not implemented")
 }
 
-// UnsafeFileDownloaderServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to FileDownloaderServer will
+// UnsafeDownloaderServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to DownloaderServer will
 // result in compilation errors.
-type UnsafeFileDownloaderServer interface {
-	mustEmbedUnimplementedFileDownloaderServer()
+type UnsafeDownloaderServer interface {
+	mustEmbedUnimplementedDownloaderServer()
 }
 
-func RegisterFileDownloaderServer(s grpc.ServiceRegistrar, srv FileDownloaderServer) {
-	s.RegisterService(&FileDownloader_ServiceDesc, srv)
+func RegisterDownloaderServer(s grpc.ServiceRegistrar, srv DownloaderServer) {
+	s.RegisterService(&Downloader_ServiceDesc, srv)
 }
 
-func _FileDownloader_Download_Handler(srv interface{}, stream grpc.ServerStream) error {
-	m := new(DownloadRequest)
+func _Downloader_DownloadFile_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DownloadFileRequest)
 	if err := stream.RecvMsg(m); err != nil {
 		return err
 	}
-	return srv.(FileDownloaderServer).Download(m, &fileDownloaderDownloadServer{stream})
+	return srv.(DownloaderServer).DownloadFile(m, &downloaderDownloadFileServer{stream})
 }
 
-type FileDownloader_DownloadServer interface {
-	Send(*DownloadResponse) error
+type Downloader_DownloadFileServer interface {
+	Send(*DownloadFileResponse) error
 	grpc.ServerStream
 }
 
-type fileDownloaderDownloadServer struct {
+type downloaderDownloadFileServer struct {
 	grpc.ServerStream
 }
 
-func (x *fileDownloaderDownloadServer) Send(m *DownloadResponse) error {
+func (x *downloaderDownloadFileServer) Send(m *DownloadFileResponse) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-// FileDownloader_ServiceDesc is the grpc.ServiceDesc for FileDownloader service.
+func _Downloader_DownloadChunks_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DownloadChunksRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(DownloaderServer).DownloadChunks(m, &downloaderDownloadChunksServer{stream})
+}
+
+type Downloader_DownloadChunksServer interface {
+	Send(*DownloadChunksResponse) error
+	grpc.ServerStream
+}
+
+type downloaderDownloadChunksServer struct {
+	grpc.ServerStream
+}
+
+func (x *downloaderDownloadChunksServer) Send(m *DownloadChunksResponse) error {
+	return x.ServerStream.SendMsg(m)
+}
+
+// Downloader_ServiceDesc is the grpc.ServiceDesc for Downloader service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var FileDownloader_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.FileDownloader",
-	HandlerType: (*FileDownloaderServer)(nil),
+var Downloader_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "proto.Downloader",
+	HandlerType: (*DownloaderServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "Download",
-			Handler:       _FileDownloader_Download_Handler,
+			StreamName:    "DownloadFile",
+			Handler:       _Downloader_DownloadFile_Handler,
+			ServerStreams: true,
+		},
+		{
+			StreamName:    "DownloadChunks",
+			Handler:       _Downloader_DownloadChunks_Handler,
 			ServerStreams: true,
 		},
 	},

@@ -14,14 +14,16 @@ import (
 )
 
 type Client interface {
-	proto.PingerClient
 	proto.DBSyncerClient
 	remotesapi.ChunkStoreServiceClient
-	proto.FileDownloaderClient
+	proto.DownloaderClient
+
+	GetID() string
 }
 
 type ClientRetriever interface {
 	GetClient(peerID string) (Client, error)
+	GetClients() []Client
 }
 
 func NewCustomFactory(cr ClientRetriever) CustomFactory {
