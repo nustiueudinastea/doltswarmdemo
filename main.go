@@ -5,16 +5,16 @@ import (
 	"os"
 
 	"github.com/libp2p/go-libp2p/core/peer"
-	db "github.com/nustiueudinastea/doltswarm"
+	"github.com/nustiueudinastea/doltswarm"
 	"github.com/protosio/distributeddolt/p2p"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
 
-var dbi *db.DB
+var dbi *doltswarm.DB
 var log = logrus.New()
 var workDir string
-var commitListChan = make(chan []db.Commit, 100)
+var commitListChan = make(chan []doltswarm.Commit, 100)
 var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
 var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
@@ -111,7 +111,7 @@ func main() {
 			return fmt.Errorf("failed to create p2p manager: %v", err)
 		}
 
-		dbi, err = db.New(workDir, "doltswarmdemo", commitListChan, p2pmgr, p2pmgr, p2pmgr, log)
+		dbi, err = doltswarm.New(workDir, "doltswarmdemo", commitListChan, p2pmgr, p2pmgr, p2pmgr, log)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}

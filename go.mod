@@ -5,7 +5,6 @@ go 1.19
 replace (
 	github.com/dolthub/dolt/go => /Users/al3x/code/protos/code/dolt/go
 	github.com/dolthub/driver => /Users/al3x/code/protos/code/doltsqldriver
-	github.com/google/flatbuffers => github.com/dolthub/flatbuffers v1.13.0-dh.1
 	github.com/nustiueudinastea/doltswarm => /Users/al3x/code/protos/code/doltswarm
 )
 

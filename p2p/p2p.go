@@ -17,8 +17,7 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
-	db "github.com/nustiueudinastea/doltswarm"
-	dbclient "github.com/nustiueudinastea/doltswarm/client"
+	"github.com/nustiueudinastea/doltswarm"
 	dbproto "github.com/nustiueudinastea/doltswarm/proto"
 	cmap "github.com/orcaman/concurrent-map"
 	p2pproto "github.com/protosio/distributeddolt/p2p/proto"
@@ -46,7 +45,7 @@ func (c *P2PClient) GetID() string {
 }
 
 type P2P struct {
-	peerHandler  db.PeerHandler
+	peerHandler  doltswarm.PeerHandler
 	log          *logrus.Logger
 	host         host.Host
 	grpcServer   *grpc.Server
@@ -59,7 +58,7 @@ func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
 }
 
-func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
+func (p2p *P2P) GetClient(id string) (doltswarm.Client, error) {
 	clientIface, found := p2p.clients.Get(id)
 	if !found {
 		return nil, fmt.Errorf("client %s not found", id)
@@ -71,8 +70,8 @@ func (p2p *P2P) GetClient(id string) (dbclient.Client, error) {
 	return client, nil
 }
 
-func (p2p *P2P) GetClients() []dbclient.Client {
-	clients := make([]dbclient.Client, 0)
+func (p2p *P2P) GetClients() []doltswarm.Client {
+	clients := make([]doltswarm.Client, 0)
 	for clientIface := range p2p.clients.IterBuffered() {
 		client, ok := clientIface.Val.(*P2PClient)
 		if !ok {
@@ -155,7 +154,7 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				p2p.log.Infof("Connected to %s", peer.ID.String())
 				p2p.clients.Set(peer.ID.String(), client)
 				if p2p.peerHandler != nil {
-					err = p2p.peerHandler.AddPeer(peer.ID.String())
+					err = p2p.peerHandler.AddPeer(peer.ID.String(), conn)
 					if err != nil {
 						p2p.log.Errorf("Failed to add DB remote for '%s': %v", peer.ID.String(), err)
 					}
@@ -193,7 +192,7 @@ func (p2p *P2P) GetGRPCServer() *grpc.Server {
 	return p2p.grpcServer
 }
 
-func (p2p *P2P) RegisterPeerHandler(handler db.PeerHandler) {
+func (p2p *P2P) RegisterPeerHandler(handler doltswarm.PeerHandler) {
 	p2p.peerHandler = handler
 }
 
