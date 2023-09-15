@@ -14,7 +14,7 @@ import (
 	"github.com/dolthub/dolt/go/store/chunks"
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/nbs"
-	"github.com/protosio/distributeddolt/proto"
+	"github.com/protosio/distributeddolt/db/proto"
 	"github.com/sirupsen/logrus"
 )
 

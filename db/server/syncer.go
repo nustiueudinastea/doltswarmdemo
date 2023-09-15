@@ -5,7 +5,7 @@ import (
 	"errors"
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
-	"github.com/protosio/distributeddolt/proto"
+	"github.com/protosio/distributeddolt/db/proto"
 	"github.com/sirupsen/logrus"
 )
 

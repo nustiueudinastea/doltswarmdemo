@@ -3,7 +3,7 @@ package client
 import (
 	"io"
 
-	"github.com/protosio/distributeddolt/proto"
+	"github.com/protosio/distributeddolt/db/proto"
 )
 
 const (

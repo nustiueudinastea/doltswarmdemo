@@ -8,7 +8,7 @@ import (
 	"time"
 
 	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
-	"github.com/protosio/distributeddolt/proto"
+	"github.com/protosio/distributeddolt/db/proto"
 )
 
 // RemoteTableFile is an implementation of a TableFile that lives in a DoltChunkStore

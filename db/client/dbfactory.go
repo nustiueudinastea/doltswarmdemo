@@ -10,7 +10,7 @@ import (
 	"github.com/dolthub/dolt/go/store/datas"
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
-	"github.com/protosio/distributeddolt/proto"
+	"github.com/protosio/distributeddolt/db/proto"
 	"github.com/sirupsen/logrus"
 )
 

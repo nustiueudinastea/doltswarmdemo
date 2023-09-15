@@ -20,8 +20,9 @@ import (
 	cmap "github.com/orcaman/concurrent-map"
 	"github.com/protosio/distributeddolt/db"
 	dbclient "github.com/protosio/distributeddolt/db/client"
+	dbproto "github.com/protosio/distributeddolt/db/proto"
 	pinger "github.com/protosio/distributeddolt/p2p/server"
-	"github.com/protosio/distributeddolt/proto"
+	p2pproto "github.com/protosio/distributeddolt/proto"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -32,10 +33,10 @@ const (
 )
 
 type P2PClient struct {
-	proto.PingerClient
-	proto.DBSyncerClient
+	p2pproto.PingerClient
+	dbproto.DBSyncerClient
 	remotesapi.ChunkStoreServiceClient
-	proto.DownloaderClient
+	dbproto.DownloaderClient
 
 	id string
 }
@@ -130,9 +131,9 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				}
 
 				// client
-				pingerClient := proto.NewPingerClient(conn)
-				dbSyncerClient := proto.NewDBSyncerClient(conn)
-				downloaderClient := proto.NewDownloaderClient(conn)
+				pingerClient := p2pproto.NewPingerClient(conn)
+				dbSyncerClient := dbproto.NewDBSyncerClient(conn)
+				downloaderClient := dbproto.NewDownloaderClient(conn)
 				csClient := remotesapi.NewChunkStoreServiceClient(conn)
 				client := &P2PClient{
 					PingerClient:            pingerClient,
@@ -143,7 +144,7 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				}
 
 				// test connectivity with a ping
-				_, err = client.Ping(ctx, &proto.PingRequest{
+				_, err = client.Ping(ctx, &p2pproto.PingRequest{
 					Ping: "pong",
 				})
 				if err != nil {
@@ -207,7 +208,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	ctx := context.TODO()
 
 	// register internal grpc servers
-	proto.RegisterPingerServer(p2p.grpcServer, &pinger.Server{})
+	p2pproto.RegisterPingerServer(p2p.grpcServer, &pinger.Server{})
 
 	// serve grpc server over libp2p host
 	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)

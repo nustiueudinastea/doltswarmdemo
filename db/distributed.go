@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/protosio/distributeddolt/db/proto"
 	"github.com/protosio/distributeddolt/db/server"
-	"github.com/protosio/distributeddolt/proto"
 	"google.golang.org/grpc"
 )
 
