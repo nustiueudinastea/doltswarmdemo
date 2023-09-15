@@ -3,7 +3,7 @@ package main
 import (
 	"github.com/gdamore/tcell/v2"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/protosio/distributeddolt/db"
+	db "github.com/nustiueudinastea/doltswarm"
 	"github.com/rivo/tview"
 )
 

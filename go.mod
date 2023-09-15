@@ -6,22 +6,19 @@ replace (
 	github.com/dolthub/dolt/go => /Users/al3x/code/protos/code/dolt/go
 	github.com/dolthub/driver => /Users/al3x/code/protos/code/doltsqldriver
 	github.com/google/flatbuffers => github.com/dolthub/flatbuffers v1.13.0-dh.1
+	github.com/nustiueudinastea/doltswarm => /Users/al3x/code/protos/code/doltswarm
 )
 
 require (
 	github.com/birros/go-libp2p-grpc v0.0.0-20221206173105-e89b5fdbc175
-	github.com/bokwoon95/sq v0.1.1
 	github.com/dolthub/dolt/go v0.40.5-0.20230503211923-08f2ebf472f2
-	github.com/dolthub/driver v0.0.0-20230503220024-0df7c47dcc69
-	github.com/dolthub/go-mysql-server v0.16.1-0.20230801211701-7b82507a9c4f
 	github.com/gdamore/tcell/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.26.3
+	github.com/nustiueudinastea/doltswarm v0.0.0-00010101000000-000000000000
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/rivo/tview v0.0.0-20221029100920-c4a7e501810d
-	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.9.0
 	github.com/urfave/cli/v2 v2.23.0
-	go.uber.org/multierr v1.8.0
 	google.golang.org/grpc v1.55.0
 	google.golang.org/protobuf v1.30.0
 )
@@ -39,6 +36,7 @@ require (
 	github.com/bcicen/jstream v1.0.0 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/bokwoon95/sq v0.1.1 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -50,9 +48,11 @@ require (
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20221028234233-6b4d72a04fef // indirect
+	github.com/dolthub/driver v0.0.0-20230503220024-0df7c47dcc69 // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
+	github.com/dolthub/go-mysql-server v0.16.1-0.20230801211701-7b82507a9c4f // indirect
 	github.com/dolthub/jsonpath v0.0.2-0.20230525180605-8dc13778fd72 // indirect
 	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
 	github.com/dolthub/swiss v0.1.0 // indirect
@@ -150,6 +150,7 @@ require (
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rivo/uniseg v0.4.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/silvasur/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect
@@ -170,6 +171,7 @@ require (
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/dig v1.15.0 // indirect
 	go.uber.org/fx v1.18.2 // indirect
+	go.uber.org/multierr v1.8.0 // indirect
 	go.uber.org/zap v1.24.0 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
 	golang.org/x/exp v0.0.0-20230522175609-2e198f4a06a1 // indirect
@@ -183,8 +185,6 @@ require (
 	golang.org/x/time v0.1.0 // indirect
 	golang.org/x/tools v0.6.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
-	gonum.org/v1/gonum v0.12.0 // indirect
-	gonum.org/v1/plot v0.12.0 // indirect
 	google.golang.org/api v0.126.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20230530153820-e85fd2cbaebc // indirect
