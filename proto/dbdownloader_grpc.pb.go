@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.3.0
 // - protoc             (unknown)
-// source: proto/filedownloader.proto
+// source: proto/dbdownloader.proto
 
 package proto
 
@@ -194,5 +194,5 @@ var Downloader_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "proto/filedownloader.proto",
+	Metadata: "proto/dbdownloader.proto",
 }
