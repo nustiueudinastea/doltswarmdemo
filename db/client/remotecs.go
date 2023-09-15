@@ -15,6 +15,7 @@ import (
 	"github.com/dolthub/dolt/go/store/hash"
 	"github.com/dolthub/dolt/go/store/nbs"
 	"github.com/protosio/distributeddolt/proto"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -23,7 +24,7 @@ const (
 	maxHasManyBatchSize = 16 * 1024
 )
 
-func NewRemoteChunkStore(client Client, peerID string, nbfVersion string) (*RemoteChunkStore, error) {
+func NewRemoteChunkStore(client Client, peerID string, nbfVersion string, logger *logrus.Entry) (*RemoteChunkStore, error) {
 	rcs := &RemoteChunkStore{
 		client:      client,
 		peerID:      peerID,
@@ -35,6 +36,7 @@ func NewRemoteChunkStore(client Client, peerID string, nbfVersion string) (*Remo
 			LargeFetchSize:         2 * 1024 * 1024,
 		},
 		nbfVersion: nbfVersion,
+		log:        logger,
 	}
 
 	metadata, err := client.GetRepoMetadata(context.Background(), &remotesapi.GetRepoMetadataRequest{
@@ -78,10 +80,11 @@ type RemoteChunkStore struct {
 	nbfVersion  string
 	repoSize    uint64
 	root        hash.Hash
+	log         *logrus.Entry
 }
 
 func (rcs *RemoteChunkStore) Get(ctx context.Context, h hash.Hash) (chunks.Chunk, error) {
-	fmt.Println("calling Get")
+	rcs.log.Info("calling Get")
 
 	hashes := hash.HashSet{h: struct{}{}}
 	var found *chunks.Chunk
@@ -97,7 +100,7 @@ func (rcs *RemoteChunkStore) Get(ctx context.Context, h hash.Hash) (chunks.Chunk
 }
 
 func (rcs *RemoteChunkStore) GetMany(ctx context.Context, hashes hash.HashSet, found func(context.Context, *chunks.Chunk)) error {
-	fmt.Println("calling GetMany")
+	rcs.log.Info("calling GetMany")
 	ae := atomicerr.New()
 	decompressedSize := uint64(0)
 	err := rcs.GetManyCompressed(ctx, hashes, func(ctx context.Context, cc nbs.CompressedChunk) {
@@ -121,7 +124,7 @@ func (rcs *RemoteChunkStore) GetMany(ctx context.Context, hashes hash.HashSet, f
 }
 
 func (rcs *RemoteChunkStore) GetManyCompressed(ctx context.Context, hashes hash.HashSet, found func(context.Context, nbs.CompressedChunk)) error {
-	fmt.Println("calling GetManyCompressed")
+	rcs.log.Info("calling GetManyCompressed")
 	hashToChunk := rcs.cache.Get(hashes)
 
 	notCached := make([]hash.Hash, 0, len(hashes))
@@ -193,7 +196,7 @@ func (rcs *RemoteChunkStore) downloadChunksAndCache(ctx context.Context, hashes 
 }
 
 func (rcs *RemoteChunkStore) Has(ctx context.Context, h hash.Hash) (bool, error) {
-	fmt.Println("calling Has")
+	rcs.log.Info("calling Has")
 	hashes := hash.HashSet{h: struct{}{}}
 	absent, err := rcs.HasMany(ctx, hashes)
 
@@ -205,7 +208,7 @@ func (rcs *RemoteChunkStore) Has(ctx context.Context, h hash.Hash) (bool, error)
 }
 
 func (rcs *RemoteChunkStore) HasMany(ctx context.Context, hashes hash.HashSet) (hash.HashSet, error) {
-	fmt.Println("calling HasMany")
+	rcs.log.Info("calling HasMany")
 
 	notCached := rcs.cache.Has(hashes)
 
@@ -279,17 +282,17 @@ func (rcs *RemoteChunkStore) HasMany(ctx context.Context, hashes hash.HashSet) (
 }
 
 func (rcs *RemoteChunkStore) Put(ctx context.Context, c chunks.Chunk, getAddrs chunks.GetAddrsCb) error {
-	fmt.Println("calling Put")
+	rcs.log.Info("calling Put")
 	return fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) Version() string {
-	fmt.Println("calling Version: ", rcs.nbfVersion)
+	rcs.log.Info("calling Version: ", rcs.nbfVersion)
 	return rcs.nbfVersion
 }
 
 func (rcs *RemoteChunkStore) Rebase(ctx context.Context) error {
-	fmt.Println("calling Rebase")
+	rcs.log.Info("calling Rebase")
 	return fmt.Errorf("not supported")
 }
 
@@ -304,27 +307,27 @@ func (rcs *RemoteChunkStore) loadRoot(ctx context.Context) error {
 }
 
 func (rcs *RemoteChunkStore) Root(ctx context.Context) (hash.Hash, error) {
-	fmt.Println("calling Root")
+	rcs.log.Info("calling Root")
 	return rcs.root, nil
 }
 
 func (rcs *RemoteChunkStore) Commit(ctx context.Context, current, last hash.Hash) (bool, error) {
-	fmt.Println("calling Commit")
+	rcs.log.Info("calling Commit")
 	return false, fmt.Errorf("not supported")
 }
 
 func (rcs *RemoteChunkStore) Stats() interface{} {
-	fmt.Println("calling Stats")
+	rcs.log.Info("calling Stats")
 	return nil
 }
 
 func (rcs *RemoteChunkStore) StatsSummary() string {
-	fmt.Println("calling StatsSummary")
+	rcs.log.Info("calling StatsSummary")
 	return "Unsupported"
 }
 
 func (rcs *RemoteChunkStore) Close() error {
-	fmt.Println("calling Close")
+	rcs.log.Info("calling Close")
 	return nil
 }
 
@@ -337,7 +340,7 @@ func (rcs *RemoteChunkStore) getRepoId() *remotesapi.RepoId {
 //
 
 func (rcs *RemoteChunkStore) Sources(ctx context.Context) (hash.Hash, []chunks.TableFile, []chunks.TableFile, error) {
-	fmt.Println("calling Sources")
+	rcs.log.Info("calling Sources")
 	id := rcs.getRepoId()
 	req := &remotesapi.ListTableFilesRequest{RepoId: id, RepoPath: "", RepoToken: ""}
 	resp, err := rcs.client.ListTableFiles(ctx, req)
@@ -347,7 +350,7 @@ func (rcs *RemoteChunkStore) Sources(ctx context.Context) (hash.Hash, []chunks.T
 	sourceFiles := getTableFiles(rcs.client, resp.TableFileInfo)
 	// TODO: remove this
 	for _, nfo := range resp.TableFileInfo {
-		fmt.Println(nfo)
+		rcs.log.Info(nfo)
 	}
 	appendixFiles := getTableFiles(rcs.client, resp.AppendixTableFileInfo)
 	return hash.New(resp.RootHash), sourceFiles, appendixFiles, nil
@@ -362,7 +365,7 @@ func getTableFiles(client Client, infoList []*remotesapi.TableFileInfo) []chunks
 }
 
 func (rcs *RemoteChunkStore) Size(ctx context.Context) (uint64, error) {
-	fmt.Println("calling Size")
+	rcs.log.Info("calling Size")
 	return rcs.repoSize, nil
 }
 

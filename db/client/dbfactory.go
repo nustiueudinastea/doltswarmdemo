@@ -11,6 +11,7 @@ import (
 	"github.com/dolthub/dolt/go/store/prolly/tree"
 	"github.com/dolthub/dolt/go/store/types"
 	"github.com/protosio/distributeddolt/proto"
+	"github.com/sirupsen/logrus"
 )
 
 type Client interface {
@@ -26,12 +27,13 @@ type ClientRetriever interface {
 	GetClients() []Client
 }
 
-func NewCustomFactory(cr ClientRetriever) CustomFactory {
-	return CustomFactory{cr}
+func NewCustomFactory(cr ClientRetriever, logger *logrus.Entry) CustomFactory {
+	return CustomFactory{cr, logger}
 }
 
 type CustomFactory struct {
-	cr ClientRetriever
+	cr     ClientRetriever
+	logger *logrus.Entry
 }
 
 func (fact CustomFactory) PrepareDB(ctx context.Context, nbf *types.NomsBinFormat, urlObj *url.URL, params map[string]interface{}) error {
@@ -60,7 +62,7 @@ func (fact CustomFactory) newChunkStore(peerID string, nbfVersion string) (chunk
 		return nil, fmt.Errorf("could not get client for '%s': %w", peerID, err)
 	}
 
-	cs, err := NewRemoteChunkStore(client, peerID, nbfVersion)
+	cs, err := NewRemoteChunkStore(client, peerID, nbfVersion, fact.logger)
 	if err != nil {
 		return nil, fmt.Errorf("could not create remote cs for '%s': %w", peerID, err)
 	}

@@ -56,8 +56,14 @@ func (db *DB) eventHandler(event server.Event) error {
 		db.log.Infof("new event '%s' from peer '%s': head -> %s", event.Type, event.Peer, event.Data.(string))
 		err := db.Pull(event.Peer)
 		if err != nil {
-			return err
+			return fmt.Errorf("error pulling from peer '%s': %v", event.Peer, err)
 		}
+
+		err = db.Merge(event.Peer)
+		if err != nil {
+			return fmt.Errorf("error merging from peer '%s': %v", event.Peer, err)
+		}
+
 	default:
 		return fmt.Errorf("unknown event type '%s'", event.Type)
 	}

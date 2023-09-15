@@ -178,6 +178,16 @@ func main() {
 				},
 			},
 			{
+				Name:   "status",
+				Usage:  "status info",
+				Before: funcBefore,
+				After:  funcAfter,
+				Action: func(ctx *cli.Context) error {
+					fmt.Printf("PEER ID: %s\n", p2pmgr.GetID())
+					return nil
+				},
+			},
+			{
 				Name:   "sql",
 				Usage:  "runs SQL",
 				Before: funcBefore,

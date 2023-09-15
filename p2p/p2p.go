@@ -196,6 +196,10 @@ func (p2p *P2P) RegisterPeerHandler(handler db.PeerHandler) {
 	p2p.peerHandler = handler
 }
 
+func (p2p *P2P) GetID() string {
+	return p2p.host.ID().String()
+}
+
 // StartServer starts listening for p2p connections
 func (p2p *P2P) StartServer() (func() error, error) {
 

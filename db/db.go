@@ -152,7 +152,7 @@ func (db *DB) p2pSetup(withGRPCservers bool) error {
 	db.log.Info("Doing p2p setup")
 	db.peerRegistrator.RegisterPeerHandler(db)
 	// register new factory
-	dbfactory.RegisterFactory("protos", client.NewCustomFactory(db.clientRetriever))
+	dbfactory.RegisterFactory("protos", client.NewCustomFactory(db.clientRetriever, logrus.NewEntry(db.log)))
 
 	if withGRPCservers {
 		// prepare dolt chunk store server
@@ -304,7 +304,7 @@ func (db *DB) InitFromPeer(peerID string) error {
 		err := db.Query(query, true)
 		if err != nil {
 			if strings.Contains(err.Error(), "could not get client") {
-				db.log.Infof("Peer %s not available yet. Retrying...", peerID)
+				db.log.Warnf("Peer %s not available yet. Retrying...", peerID)
 				tries++
 				time.Sleep(2 * time.Second)
 				continue
@@ -337,10 +337,36 @@ func (db *DB) Pull(peerID string) error {
 		}
 	}
 
-	err = db.Query(fmt.Sprintf("CALL DOLT_PULL('%s', 'main');", peerID), true)
+	err = db.Query(fmt.Sprintf("CALL DOLT_PULL('%s', 'main');", peerID), false)
 	if err != nil {
 		return fmt.Errorf("failed to pull db from peer %s: %w", peerID, err)
 	}
+	return nil
+}
+
+func (db *DB) Merge(peerID string) error {
+
+	txn, err := db.sqld.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+	defer txn.Rollback()
+
+	_, err = txn.Exec("CALL DOLT_CHECKOUT('main');")
+	if err != nil {
+		return fmt.Errorf("failed to checkout main branch: %w", err)
+	}
+
+	_, err = txn.Exec(fmt.Sprintf("CALL DOLT_MERGE('%s');", peerID))
+	if err != nil {
+		return fmt.Errorf("failed to merge branch for peer '%s': %w", peerID, err)
+	}
+
+	err = txn.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit merge transaction: %w", err)
+	}
+
 	return nil
 }
 
