@@ -111,7 +111,7 @@ func main() {
 			return fmt.Errorf("failed to create p2p manager: %v", err)
 		}
 
-		dbi, err = db.New(workDir, commitListChan, p2pmgr, p2pmgr, p2pmgr, log)
+		dbi, err = db.New(workDir, "doltswarmdemo", commitListChan, p2pmgr, p2pmgr, p2pmgr, log)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}
