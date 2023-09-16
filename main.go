@@ -99,22 +99,28 @@ func main() {
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
 
-		log.SetOutput(uiLog)
+		if ctx.Command.Name != "init" {
+			log.SetOutput(uiLog)
+		}
 
 		err = ensureDir(workDir)
 		if err != nil {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		p2pmgr, err = p2p.NewManager(workDir, port, peerListChan, log)
+		dbi, err = doltswarm.New(workDir, "doltswarmdemo", commitListChan, log)
+		if err != nil {
+			return fmt.Errorf("failed to create db: %v", err)
+		}
+
+		p2pmgr, err = p2p.NewManager(workDir, port, peerListChan, log, dbi)
 		if err != nil {
 			return fmt.Errorf("failed to create p2p manager: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, "doltswarmdemo", commitListChan, p2pmgr, p2pmgr, p2pmgr, log)
-		if err != nil {
-			return fmt.Errorf("failed to create db: %v", err)
-		}
+		// grpc server needs to be added before opening the DB
+		dbi.AddGRPCServer(p2pmgr.GetGRPCServer())
+
 		err = dbi.Open()
 		if err != nil {
 			return fmt.Errorf("failed to open db: %v", err)

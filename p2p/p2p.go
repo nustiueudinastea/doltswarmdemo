@@ -7,7 +7,6 @@ import (
 	"time"
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
-	remotesapi "github.com/dolthub/dolt/go/gen/proto/dolt/services/remotesapi/v1alpha1"
 	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
@@ -17,8 +16,6 @@ import (
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
-	"github.com/nustiueudinastea/doltswarm"
-	dbproto "github.com/nustiueudinastea/doltswarm/proto"
 	cmap "github.com/orcaman/concurrent-map"
 	p2pproto "github.com/protosio/distributeddolt/p2p/proto"
 	pinger "github.com/protosio/distributeddolt/p2p/server"
@@ -31,11 +28,13 @@ const (
 	protosRPCProtocol = protocol.ID("/protos/rpc/0.0.1")
 )
 
+type PeerRegistrator interface {
+	AddPeer(peerID string, conn *grpc.ClientConn) error
+	RemovePeer(peerID string) error
+}
+
 type P2PClient struct {
 	p2pproto.PingerClient
-	dbproto.DBSyncerClient
-	remotesapi.ChunkStoreServiceClient
-	dbproto.DownloaderClient
 
 	id string
 }
@@ -45,42 +44,17 @@ func (c *P2PClient) GetID() string {
 }
 
 type P2P struct {
-	peerHandler  doltswarm.PeerHandler
-	log          *logrus.Logger
-	host         host.Host
-	grpcServer   *grpc.Server
-	PeerChan     chan peer.AddrInfo
-	peerListChan chan peer.IDSlice
-	clients      cmap.ConcurrentMap
+	log             *logrus.Logger
+	host            host.Host
+	grpcServer      *grpc.Server
+	PeerChan        chan peer.AddrInfo
+	peerListChan    chan peer.IDSlice
+	clients         cmap.ConcurrentMap
+	peerRegistrator PeerRegistrator
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
-}
-
-func (p2p *P2P) GetClient(id string) (doltswarm.Client, error) {
-	clientIface, found := p2p.clients.Get(id)
-	if !found {
-		return nil, fmt.Errorf("client %s not found", id)
-	}
-	client, ok := clientIface.(*P2PClient)
-	if !ok {
-		return nil, fmt.Errorf("client %s not found", id)
-	}
-	return client, nil
-}
-
-func (p2p *P2P) GetClients() []doltswarm.Client {
-	clients := make([]doltswarm.Client, 0)
-	for clientIface := range p2p.clients.IterBuffered() {
-		client, ok := clientIface.Val.(*P2PClient)
-		if !ok {
-			panic(fmt.Errorf("client %s has incorrect type", clientIface.Key))
-		}
-
-		clients = append(clients, client)
-	}
-	return clients
 }
 
 func (p2p *P2P) peerDiscoveryProcessor() func() error {
@@ -131,15 +105,9 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 
 				// client
 				pingerClient := p2pproto.NewPingerClient(conn)
-				dbSyncerClient := dbproto.NewDBSyncerClient(conn)
-				downloaderClient := dbproto.NewDownloaderClient(conn)
-				csClient := remotesapi.NewChunkStoreServiceClient(conn)
 				client := &P2PClient{
-					PingerClient:            pingerClient,
-					DBSyncerClient:          dbSyncerClient,
-					ChunkStoreServiceClient: csClient,
-					DownloaderClient:        downloaderClient,
-					id:                      peer.ID.String(),
+					PingerClient: pingerClient,
+					id:           peer.ID.String(),
 				}
 
 				// test connectivity with a ping
@@ -153,8 +121,8 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 
 				p2p.log.Infof("Connected to %s", peer.ID.String())
 				p2p.clients.Set(peer.ID.String(), client)
-				if p2p.peerHandler != nil {
-					err = p2p.peerHandler.AddPeer(peer.ID.String(), conn)
+				if p2p.peerRegistrator != nil {
+					err = p2p.peerRegistrator.AddPeer(peer.ID.String(), conn)
 					if err != nil {
 						p2p.log.Errorf("Failed to add DB remote for '%s': %v", peer.ID.String(), err)
 					}
@@ -181,8 +149,8 @@ func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) 
 		p2p.log.Errorf("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
 	}
 	p2p.clients.Remove(conn.RemotePeer().String())
-	if p2p.peerHandler != nil {
-		if err := p2p.peerHandler.RemovePeer(conn.RemotePeer().String()); err != nil {
+	if p2p.peerRegistrator != nil {
+		if err := p2p.peerRegistrator.RemovePeer(conn.RemotePeer().String()); err != nil {
 			p2p.log.Errorf("Failed to remove DB peer for '%s': %v", conn.RemotePeer().String(), err)
 		}
 	}
@@ -190,10 +158,6 @@ func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) 
 
 func (p2p *P2P) GetGRPCServer() *grpc.Server {
 	return p2p.grpcServer
-}
-
-func (p2p *P2P) RegisterPeerHandler(handler doltswarm.PeerHandler) {
-	p2p.peerHandler = handler
 }
 
 func (p2p *P2P) GetID() string {
@@ -244,13 +208,14 @@ func (p2p *P2P) StartServer() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger) (*P2P, error) {
+func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, peerRegistrator PeerRegistrator) (*P2P, error) {
 	p2p := &P2P{
-		PeerChan:     make(chan peer.AddrInfo),
-		peerListChan: peerListChan,
-		clients:      cmap.New(),
-		log:          logger,
-		grpcServer:   grpc.NewServer(p2pgrpc.WithP2PCredentials()),
+		PeerChan:        make(chan peer.AddrInfo),
+		peerListChan:    peerListChan,
+		clients:         cmap.New(),
+		log:             logger,
+		grpcServer:      grpc.NewServer(p2pgrpc.WithP2PCredentials()),
+		peerRegistrator: peerRegistrator,
 	}
 
 	var prvKey crypto.PrivKey

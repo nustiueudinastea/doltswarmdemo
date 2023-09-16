@@ -10,7 +10,6 @@ replace (
 
 require (
 	github.com/birros/go-libp2p-grpc v0.0.0-20221206173105-e89b5fdbc175
-	github.com/dolthub/dolt/go v0.40.5-0.20230503211923-08f2ebf472f2
 	github.com/gdamore/tcell/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.26.3
 	github.com/nustiueudinastea/doltswarm v0.0.0-00010101000000-000000000000
@@ -46,6 +45,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.1.0 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
+	github.com/dolthub/dolt/go v0.40.5-0.20230503211923-08f2ebf472f2 // indirect
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20221028234233-6b4d72a04fef // indirect
 	github.com/dolthub/driver v0.0.0-20230503220024-0df7c47dcc69 // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
