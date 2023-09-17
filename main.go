@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/nustiueudinastea/doltswarm"
@@ -37,7 +38,7 @@ func p2pRun(workDir string, port int) error {
 		return err
 	}
 
-	dbi.StartUpdater()
+	updaterSopper := startCommitUpdater()
 
 	gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
 	// the following blocks so we can close everything else once this returns
@@ -50,12 +51,52 @@ func p2pRun(workDir string, port int) error {
 
 	err = p2pStopper()
 	if err != nil {
-		return err
+		log.Error(err)
+	}
+
+	err = updaterSopper()
+	if err != nil {
+		log.Error(err)
 	}
 
 	log.Info("Shutdown completed")
 
 	return nil
+}
+
+func startCommitUpdater() func() error {
+	log.Info("Starting commit updater")
+	updateTimer := time.NewTicker(1 * time.Second)
+	commitTimmer := time.NewTicker(15 * time.Second)
+	stopSignal := make(chan struct{})
+	go func() {
+		for {
+			select {
+			case <-updateTimer.C:
+				commits, err := dbi.GetAllCommits()
+				if err != nil {
+					log.Errorf("failed to retrieve all commits: %s", err.Error())
+					continue
+				}
+				commitListChan <- commits
+			case timer := <-commitTimmer.C:
+				err := dbi.Insert(timer.String())
+				if err != nil {
+					log.Errorf("Failed to insert time: %s", err.Error())
+					continue
+				}
+				log.Infof("Inserted time '%s' into db", timer.String())
+			case <-stopSignal:
+				log.Info("Stopping commit updater")
+				return
+			}
+		}
+	}()
+	stopper := func() error {
+		stopSignal <- struct{}{}
+		return nil
+	}
+	return stopper
 }
 
 func Init(localInit bool, peerInit string, port int) error {
@@ -108,7 +149,7 @@ func main() {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, "doltswarmdemo", commitListChan, log)
+		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}
