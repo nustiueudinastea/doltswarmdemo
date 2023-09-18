@@ -15,6 +15,7 @@ require (
 	github.com/nustiueudinastea/doltswarm v0.0.0-00010101000000-000000000000
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/rivo/tview v0.0.0-20221029100920-c4a7e501810d
+	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.9.0
 	github.com/urfave/cli/v2 v2.23.0
 	google.golang.org/grpc v1.55.0
@@ -149,7 +150,6 @@ require (
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rivo/uniseg v0.4.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/segmentio/ksuid v1.0.4 // indirect
 	github.com/sergi/go-diff v1.1.0 // indirect
 	github.com/shopspring/decimal v1.3.1 // indirect
 	github.com/silvasur/buzhash v0.0.0-20160816060738-9bdec3dec7c6 // indirect

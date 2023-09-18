@@ -80,7 +80,7 @@ func startCommitUpdater() func() error {
 				}
 				commitListChan <- commits
 			case timer := <-commitTimmer.C:
-				err := dbi.Insert(timer.String())
+				err := insert(timer.String())
 				if err != nil {
 					log.Errorf("Failed to insert time: %s", err.Error())
 					continue
@@ -240,7 +240,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return dbi.Query(ctx.Args().First(), true)
+					return dbi.Query(ctx.Args().First())
 				},
 			},
 			{
@@ -267,7 +267,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return dbi.Insert(ctx.Args().First())
+					return insert(ctx.Args().First())
 				},
 			},
 		},
