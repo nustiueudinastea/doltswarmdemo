@@ -105,7 +105,26 @@ func Init(localInit bool, peerInit string, port int) error {
 	}
 
 	if localInit {
-		return dbi.InitLocal()
+		err := dbi.InitLocal()
+		if err != nil {
+			return fmt.Errorf("failed to init local db: %w", err)
+		}
+
+		tx, err := dbi.Begin()
+		if err != nil {
+			return fmt.Errorf("failed to start transaction: %w", err)
+		}
+		defer tx.Commit()
+
+		// create table
+		_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
+			  id varchar(256) PRIMARY KEY,
+			  name varchar(512)
+			);`, tableName))
+		if err != nil {
+			return fmt.Errorf("failed to create table: %w", err)
+		}
+		return nil
 	} else if peerInit != "" {
 		var p2pStopper func() error
 		var err error
