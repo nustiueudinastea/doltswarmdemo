@@ -240,7 +240,8 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return dbi.Query(ctx.Args().First())
+					_, err := dbi.Query(ctx.Args().First())
+					return err
 				},
 			},
 			{
