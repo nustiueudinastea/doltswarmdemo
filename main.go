@@ -155,9 +155,17 @@ func main() {
 	var port int
 	var localInit bool
 	var peerInit string
+	var logLevel string
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
+
+		level, err := logrus.ParseLevel(logLevel)
+		if err != nil {
+			return fmt.Errorf("failed to parse log level: %v", err)
+		}
+
+		log.SetLevel(level)
 
 		if ctx.Command.Name != "init" {
 			log.SetOutput(uiLog)
@@ -199,6 +207,12 @@ func main() {
 	app := &cli.App{
 		Name: "distributeddolt",
 		Flags: []cli.Flag{
+			&cli.StringFlag{
+				Name:        "log",
+				Value:       "info",
+				Usage:       "logging level",
+				Destination: &logLevel,
+			},
 			&cli.StringFlag{
 				Name:        "db",
 				Value:       "db",
