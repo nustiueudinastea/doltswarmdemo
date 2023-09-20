@@ -17,9 +17,34 @@ func insert(data string) error {
 	}
 
 	queryString := fmt.Sprintf("INSERT INTO %s (id, name) VALUES ('%s', '%s');", tableName, uid.String(), data)
-	_, err = dbi.Exec(queryString)
+
+	tx, err := dbi.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to start transaction: %w", err)
+	}
+
+	defer tx.Rollback()
+
+	_, err = tx.Exec(queryString)
 	if err != nil {
 		return fmt.Errorf("failed to save record: %w", err)
+	}
+
+	// add
+	_, err = tx.Exec(`CALL DOLT_ADD('-A');`)
+	if err != nil {
+		return fmt.Errorf("failed to commit table: %w", err)
+	}
+
+	// commit
+	_, err = tx.Exec(`CALL DOLT_COMMIT('-m', 'Inserted time', '--author', 'Alex Giurgiu <alex@giurgiu.io>');`)
+	if err != nil {
+		return fmt.Errorf("failed to commit table: %w", err)
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return fmt.Errorf("failed to commit insert transaction: %w", err)
 	}
 
 	// async advertise new head

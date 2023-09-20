@@ -114,7 +114,6 @@ func Init(localInit bool, peerInit string, port int) error {
 		if err != nil {
 			return fmt.Errorf("failed to start transaction: %w", err)
 		}
-		defer tx.Commit()
 
 		// create table
 		_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
@@ -124,6 +123,24 @@ func Init(localInit bool, peerInit string, port int) error {
 		if err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}
+
+		// add
+		_, err = tx.Exec(`CALL DOLT_ADD('-A');`)
+		if err != nil {
+			return fmt.Errorf("failed to commit table: %w", err)
+		}
+
+		// commit
+		_, err = tx.Exec(`CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', 'Alex Giurgiu <alex@giurgiu.io>');`)
+		if err != nil {
+			return fmt.Errorf("failed to commit table: %w", err)
+		}
+
+		err = tx.Commit()
+		if err != nil {
+			return fmt.Errorf("failed to commit transaction: %w", err)
+		}
+
 		return nil
 	} else if peerInit != "" {
 		var p2pStopper func() error
