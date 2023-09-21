@@ -28,7 +28,7 @@ func uiUpdate(app *tview.Application, peerListView *tview.List, commitTreeRoot *
 			case commitList := <-commitListChan:
 				commitTreeRoot.ClearChildren()
 				for _, commit := range commitList {
-					node := tview.NewTreeNode(commit.Hash)
+					node := tview.NewTreeNode(commit.Hash + " - " + commit.Message)
 					commitTreeRoot.AddChild(node)
 				}
 				app.Draw()
@@ -49,21 +49,25 @@ func createUI(peerListChan chan peer.IDSlice, commitListChan chan []doltswarm.Co
 	var app = tview.NewApplication()
 	var flex = tview.NewFlex()
 
-	treeRoot := tview.NewTreeNode(".").SetColor(tcell.ColorRed)
-	tree := tview.NewTreeView().SetRoot(treeRoot)
-	tree.SetBorder(true).SetTitle("Commits")
+	flexRow := tview.NewFlex().SetDirection(tview.FlexRow)
 
-	textView := tview.NewTextView()
-	textView.SetBorder(true).SetTitle("Events")
+	commitTreeRoot := tview.NewTreeNode(".").SetColor(tcell.ColorRed)
+	commitTree := tview.NewTreeView().SetRoot(commitTreeRoot)
+	commitTree.SetBorder(true).SetTitle("Commits")
+
+	logView := tview.NewTextView()
+	logView.SetBorder(true).SetTitle("Events")
 
 	peerList := tview.NewList()
 	peerList.SetBorder(true).SetTitle("Peers")
 
-	flex.AddItem(peerList, 0, 1, false).
-		AddItem(tree, 0, 1, false).
-		AddItem(textView, 0, 2, false)
+	flexRow.AddItem(peerList, 0, 1, false).
+		AddItem(commitTree, 0, 5, false)
 
-	uiUpdateStopper := uiUpdate(app, peerList, treeRoot, textView, peerListChan, commitListChan, eventChan)
+	flex.AddItem(flexRow, 0, 1, false).
+		AddItem(logView, 0, 1, false)
+
+	uiUpdateStopper := uiUpdate(app, peerList, commitTreeRoot, logView, peerListChan, commitListChan, eventChan)
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		if event.Key() == tcell.KeyCtrlC {
 			uiUpdateStopper()
