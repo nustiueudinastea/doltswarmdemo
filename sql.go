@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/segmentio/ksuid"
 )
@@ -37,7 +38,7 @@ func insert(data string) error {
 	}
 
 	// commit
-	_, err = tx.Exec(`CALL DOLT_COMMIT('-m', 'Inserted time', '--author', 'Alex Giurgiu <alex@giurgiu.io>');`)
+	_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Inserted time', '--author', 'Alex Giurgiu <alex@giurgiu.io>', '--date', '%s');", time.Now().Format(time.RFC3339Nano)))
 	if err != nil {
 		return fmt.Errorf("failed to commit table: %w", err)
 	}

@@ -31,7 +31,7 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 	return len(logLine), nil
 }
 
-func p2pRun(workDir string, port int) error {
+func p2pRun(workDir string, port int, noGUI bool) error {
 
 	p2pStopper, err := p2pmgr.StartServer()
 	if err != nil {
@@ -40,14 +40,16 @@ func p2pRun(workDir string, port int) error {
 
 	updaterSopper := startCommitUpdater()
 
-	gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
-	// the following blocks so we can close everything else once this returns
-	err = gui.Run()
-	if err != nil {
-		panic(err)
+	if !noGUI {
+		gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
+		// the following blocks so we can close everything else once this returns
+		err = gui.Run()
+		if err != nil {
+			panic(err)
+		}
+	} else {
+		time.Sleep(time.Second * 3000)
 	}
-
-	// time.Sleep(time.Second * 300)
 
 	err = p2pStopper()
 	if err != nil {
@@ -131,7 +133,7 @@ func Init(localInit bool, peerInit string, port int) error {
 		}
 
 		// commit
-		_, err = tx.Exec(`CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', 'Alex Giurgiu <alex@giurgiu.io>');`)
+		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialise doltswarmdemo', '--author', 'Alex Giurgiu <alex@giurgiu.io>', '--date', '%s');", time.Now().Format(time.RFC3339Nano)))
 		if err != nil {
 			return fmt.Errorf("failed to commit table: %w", err)
 		}
@@ -173,6 +175,7 @@ func main() {
 	var localInit bool
 	var peerInit string
 	var logLevel string
+	var noGUI bool
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
@@ -184,7 +187,7 @@ func main() {
 
 		log.SetLevel(level)
 
-		if ctx.Command.Name != "init" {
+		if ctx.Command.Name != "init" && !noGUI {
 			log.SetOutput(uiLog)
 		}
 
@@ -242,6 +245,12 @@ func main() {
 				Usage:       "port number",
 				Destination: &port,
 			},
+			&cli.BoolFlag{
+				Name:        "no-gui",
+				Value:       false,
+				Usage:       "disable gui",
+				Destination: &noGUI,
+			},
 		},
 		Commands: []*cli.Command{
 			{
@@ -250,7 +259,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return p2pRun(workDir, port)
+					return p2pRun(workDir, port, noGUI)
 				},
 			},
 			{
