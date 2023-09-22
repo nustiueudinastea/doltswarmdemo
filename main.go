@@ -82,7 +82,7 @@ func startCommitUpdater() func() error {
 				}
 				commitListChan <- commits
 			case timer := <-commitTimmer.C:
-				err := insert(timer.String())
+				err := insert(p2pmgr.GetID() + " - " + timer.String())
 				if err != nil {
 					log.Errorf("Failed to insert time: %s", err.Error())
 					continue
