@@ -31,14 +31,14 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 	return len(logLine), nil
 }
 
-func p2pRun(workDir string, port int, noGUI bool) error {
+func p2pRun(workDir string, port int, noGUI bool, noCommits bool, commitInterval int) error {
 
 	p2pStopper, err := p2pmgr.StartServer()
 	if err != nil {
 		return err
 	}
 
-	updaterSopper := startCommitUpdater()
+	updaterSopper := startCommitUpdater(noCommits, commitInterval)
 
 	if !noGUI {
 		gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
@@ -66,10 +66,10 @@ func p2pRun(workDir string, port int, noGUI bool) error {
 	return nil
 }
 
-func startCommitUpdater() func() error {
+func startCommitUpdater(noCommits bool, commitInterval int) func() error {
 	log.Info("Starting commit updater")
 	updateTimer := time.NewTicker(1 * time.Second)
-	commitTimmer := time.NewTicker(15 * time.Second)
+	commitTimmer := time.NewTicker(time.Duration(commitInterval) * time.Second)
 	stopSignal := make(chan struct{})
 	go func() {
 		for {
@@ -82,6 +82,9 @@ func startCommitUpdater() func() error {
 				}
 				commitListChan <- commits
 			case timer := <-commitTimmer.C:
+				if noCommits {
+					continue
+				}
 				err := insert(p2pmgr.GetID() + " - " + timer.String())
 				if err != nil {
 					log.Errorf("Failed to insert time: %s", err.Error())
@@ -176,6 +179,8 @@ func main() {
 	var peerInit string
 	var logLevel string
 	var noGUI bool
+	var noCommits bool
+	var commitInterval int
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
@@ -251,6 +256,18 @@ func main() {
 				Usage:       "disable gui",
 				Destination: &noGUI,
 			},
+			&cli.BoolFlag{
+				Name:        "no-commits",
+				Value:       false,
+				Usage:       "disable periodic commits",
+				Destination: &noCommits,
+			},
+			&cli.IntFlag{
+				Name:        "commit-interval",
+				Value:       15,
+				Usage:       "interval between commits in seconds",
+				Destination: &commitInterval,
+			},
 		},
 		Commands: []*cli.Command{
 			{
@@ -259,7 +276,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return p2pRun(workDir, port, noGUI)
+					return p2pRun(workDir, port, noGUI, noCommits, commitInterval)
 				},
 			},
 			{
@@ -303,24 +320,24 @@ func main() {
 					return err
 				},
 			},
-			{
-				Name:   "commits",
-				Usage:  "list all commits",
-				Before: funcBefore,
-				After:  funcAfter,
-				Action: func(ctx *cli.Context) error {
-					return dbi.PrintAllCommits()
-				},
-			},
-			{
-				Name:   "data",
-				Usage:  "show all data",
-				Before: funcBefore,
-				After:  funcAfter,
-				Action: func(ctx *cli.Context) error {
-					return dbi.PrintAllData()
-				},
-			},
+			// {
+			// 	Name:   "commits",
+			// 	Usage:  "list all commits",
+			// 	Before: funcBefore,
+			// 	After:  funcAfter,
+			// 	Action: func(ctx *cli.Context) error {
+			// 		return dbi.PrintAllCommits()
+			// 	},
+			// },
+			// {
+			// 	Name:   "data",
+			// 	Usage:  "show all data",
+			// 	Before: funcBefore,
+			// 	After:  funcAfter,
+			// 	Action: func(ctx *cli.Context) error {
+			// 		return dbi.PrintAllData()
+			// 	},
+			// },
 			{
 				Name:   "insert",
 				Usage:  "insert data",
