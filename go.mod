@@ -20,6 +20,7 @@ require (
 	github.com/urfave/cli/v2 v2.23.0
 	google.golang.org/grpc v1.57.0
 	google.golang.org/protobuf v1.31.0
+	gopkg.in/ryankurte/go-async-cmd.v1 v1.0.0
 )
 
 require (

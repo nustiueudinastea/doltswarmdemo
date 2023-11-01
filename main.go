@@ -3,6 +3,9 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/libp2p/go-libp2p/core/peer"
@@ -12,6 +15,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
+var stoppers = map[string]func() error{}
 var dbi *doltswarm.DB
 var log = logrus.New()
 var workDir string
@@ -19,6 +23,18 @@ var commitListChan = make(chan []doltswarm.Commit, 100)
 var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
 var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
+
+func catchSignals(sigs chan os.Signal, wg *sync.WaitGroup) {
+	sig := <-sigs
+	log.Infof("Received OS signal %s. Terminating", sig.String())
+	for _, stopper := range stoppers {
+		err := stopper()
+		if err != nil {
+			log.Error(err)
+		}
+	}
+	wg.Done()
+}
 
 type EventWriter struct {
 	eventChan chan []byte
@@ -33,12 +49,21 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 
 func p2pRun(workDir string, port int, noGUI bool, noCommits bool, commitInterval int) error {
 
+	// Handle OS signals
+	var wg sync.WaitGroup
+	wg.Add(1)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go catchSignals(sigs, &wg)
+
 	p2pStopper, err := p2pmgr.StartServer()
 	if err != nil {
 		return err
 	}
+	stoppers["p2p"] = p2pStopper
 
 	updaterSopper := startCommitUpdater(noCommits, commitInterval)
+	stoppers["update"] = updaterSopper
 
 	if !noGUI {
 		gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
@@ -47,20 +72,9 @@ func p2pRun(workDir string, port int, noGUI bool, noCommits bool, commitInterval
 		if err != nil {
 			panic(err)
 		}
-	} else {
-		time.Sleep(time.Second * 3000)
 	}
 
-	err = p2pStopper()
-	if err != nil {
-		log.Error(err)
-	}
-
-	err = updaterSopper()
-	if err != nil {
-		log.Error(err)
-	}
-
+	wg.Wait()
 	log.Info("Shutdown completed")
 
 	return nil
@@ -150,12 +164,11 @@ func Init(localInit bool, peerInit string, port int) error {
 	} else if peerInit != "" {
 		var p2pStopper func() error
 		var err error
-		go func() {
-			p2pStopper, err = p2pmgr.StartServer()
-			if err != nil {
-				panic(err)
-			}
-		}()
+
+		p2pStopper, err = p2pmgr.StartServer()
+		if err != nil {
+			panic(err)
+		}
 
 		err = dbi.InitFromPeer(peerInit)
 		if err != nil {

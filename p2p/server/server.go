@@ -9,6 +9,7 @@ import (
 )
 
 var _ proto.PingerServer = (*Server)(nil)
+var _ proto.TesterServer = (*Server)(nil)
 
 type Server struct{}
 
@@ -22,4 +23,8 @@ func (s *Server) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingR
 		Pong: "Ping: " + req.Ping + "!",
 	}
 	return res, nil
+}
+
+func (s *Server) Insert(context.Context, *proto.ExecSQLRequest) (*proto.ExecSQLResponse, error) {
+	return nil, nil
 }

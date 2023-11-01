@@ -18,7 +18,7 @@ import (
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
 	p2pproto "github.com/protosio/distributeddolt/p2p/proto"
-	pinger "github.com/protosio/distributeddolt/p2p/server"
+	grpcserver "github.com/protosio/distributeddolt/p2p/server"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -35,6 +35,7 @@ type PeerRegistrator interface {
 
 type P2PClient struct {
 	p2pproto.PingerClient
+	p2pproto.TesterClient
 
 	id string
 }
@@ -57,6 +58,14 @@ func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
 	p2p.PeerChan <- pi
 }
 
+func (p2p *P2P) GetClients() []*P2PClient {
+	clients := []*P2PClient{}
+	for _, c := range p2p.clients.Items() {
+		clients = append(clients, c.(*P2PClient))
+	}
+	return clients
+}
+
 func (p2p *P2P) peerDiscoveryProcessor() func() error {
 	stopSignal := make(chan struct{})
 	go func() {
@@ -73,7 +82,7 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 
 				tries := 0
 				for {
-					if tries == 5 {
+					if tries == 20 {
 						break
 					}
 					tries += 1
@@ -104,9 +113,9 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 				}
 
 				// client
-				pingerClient := p2pproto.NewPingerClient(conn)
 				client := &P2PClient{
-					PingerClient: pingerClient,
+					PingerClient: p2pproto.NewPingerClient(conn),
+					TesterClient: p2pproto.NewTesterClient(conn),
 					id:           peer.ID.String(),
 				}
 
@@ -171,7 +180,8 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	ctx := context.TODO()
 
 	// register internal grpc servers
-	p2pproto.RegisterPingerServer(p2p.grpcServer, &pinger.Server{})
+	p2pproto.RegisterPingerServer(p2p.grpcServer, &grpcserver.Server{})
+	p2pproto.RegisterTesterServer(p2p.grpcServer, &grpcserver.Server{})
 
 	// serve grpc server over libp2p host
 	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
@@ -218,9 +228,25 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 		peerRegistrator: peerRegistrator,
 	}
 
+	workdirInfo, err := os.Stat(workdir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			err := os.Mkdir(workdir, 0755)
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	} else {
+		if !workdirInfo.IsDir() {
+			return nil, fmt.Errorf("workdir %s is not a directory", workdir)
+		}
+	}
+
 	var prvKey crypto.PrivKey
 	keyFile := workdir + "/key"
-	fileInfo, err := os.Stat(keyFile)
+	keyInfo, err := os.Stat(keyFile)
 	if err != nil {
 		if os.IsNotExist(err) {
 			prvKey, _, err = crypto.GenerateKeyPair(crypto.Ed25519, 0)
@@ -239,7 +265,7 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 			return nil, err
 		}
 	} else {
-		if fileInfo.IsDir() {
+		if keyInfo.IsDir() {
 			return nil, fmt.Errorf("key file %s is a directory", keyFile)
 		}
 		prvKeyBytes, err := os.ReadFile(keyFile)
@@ -260,8 +286,7 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 	host, err := libp2p.New(
 		libp2p.Identity(prvKey),
 		libp2p.ListenAddrStrings(
-			fmt.Sprintf("/ip4/0.0.0.0/tcp/%d", port),
-			fmt.Sprintf("/ip4/0.0.0.0/udp/%d/quic", port),
+			fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port),
 		),
 		libp2p.Security(noise.ID, noise.New),
 		libp2p.DefaultTransports,
