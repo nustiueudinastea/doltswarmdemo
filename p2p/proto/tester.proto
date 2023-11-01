@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+option go_package = "./proto";
+
+package proto;
+
+service Tester {
+  rpc Insert (ExecSQLRequest) returns (ExecSQLResponse) {}
+}
+
+message ExecSQLRequest {
+  string statement = 1;
+}
+
+message ExecSQLResponse {
+  string result = 1;
+  string err = 2;
+}
