@@ -5,14 +5,27 @@ option go_package = "./proto";
 package proto;
 
 service Tester {
-  rpc Insert (ExecSQLRequest) returns (ExecSQLResponse) {}
+  rpc ExecSQL(ExecSQLRequest) returns (ExecSQLResponse) {}
+  rpc GetAllCommits(GetAllCommitsRequest) returns (GetAllCommitsResponse) {}
+  rpc GetHead(GetHeadRequest) returns (GetHeadResponse) {}
 }
 
 message ExecSQLRequest {
   string statement = 1;
+  string msg = 2;
+}
+message ExecSQLResponse {
+  string commit = 1;
+  string result = 2;
+  string err = 3;
 }
 
-message ExecSQLResponse {
-  string result = 1;
-  string err = 2;
+message GetAllCommitsRequest {}
+message GetAllCommitsResponse {
+  repeated string commits = 1;
+}
+
+message GetHeadRequest {}
+message GetHeadResponse {
+  string commit = 1;
 }

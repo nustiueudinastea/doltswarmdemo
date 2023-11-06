@@ -19,14 +19,18 @@ import (
 const _ = grpc.SupportPackageIsVersion7
 
 const (
-	Tester_Insert_FullMethodName = "/proto.Tester/Insert"
+	Tester_ExecSQL_FullMethodName       = "/proto.Tester/ExecSQL"
+	Tester_GetAllCommits_FullMethodName = "/proto.Tester/GetAllCommits"
+	Tester_GetHead_FullMethodName       = "/proto.Tester/GetHead"
 )
 
 // TesterClient is the client API for Tester service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TesterClient interface {
-	Insert(ctx context.Context, in *ExecSQLRequest, opts ...grpc.CallOption) (*ExecSQLResponse, error)
+	ExecSQL(ctx context.Context, in *ExecSQLRequest, opts ...grpc.CallOption) (*ExecSQLResponse, error)
+	GetAllCommits(ctx context.Context, in *GetAllCommitsRequest, opts ...grpc.CallOption) (*GetAllCommitsResponse, error)
+	GetHead(ctx context.Context, in *GetHeadRequest, opts ...grpc.CallOption) (*GetHeadResponse, error)
 }
 
 type testerClient struct {
@@ -37,9 +41,27 @@ func NewTesterClient(cc grpc.ClientConnInterface) TesterClient {
 	return &testerClient{cc}
 }
 
-func (c *testerClient) Insert(ctx context.Context, in *ExecSQLRequest, opts ...grpc.CallOption) (*ExecSQLResponse, error) {
+func (c *testerClient) ExecSQL(ctx context.Context, in *ExecSQLRequest, opts ...grpc.CallOption) (*ExecSQLResponse, error) {
 	out := new(ExecSQLResponse)
-	err := c.cc.Invoke(ctx, Tester_Insert_FullMethodName, in, out, opts...)
+	err := c.cc.Invoke(ctx, Tester_ExecSQL_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *testerClient) GetAllCommits(ctx context.Context, in *GetAllCommitsRequest, opts ...grpc.CallOption) (*GetAllCommitsResponse, error) {
+	out := new(GetAllCommitsResponse)
+	err := c.cc.Invoke(ctx, Tester_GetAllCommits_FullMethodName, in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *testerClient) GetHead(ctx context.Context, in *GetHeadRequest, opts ...grpc.CallOption) (*GetHeadResponse, error) {
+	out := new(GetHeadResponse)
+	err := c.cc.Invoke(ctx, Tester_GetHead_FullMethodName, in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -50,15 +72,23 @@ func (c *testerClient) Insert(ctx context.Context, in *ExecSQLRequest, opts ...g
 // All implementations should embed UnimplementedTesterServer
 // for forward compatibility
 type TesterServer interface {
-	Insert(context.Context, *ExecSQLRequest) (*ExecSQLResponse, error)
+	ExecSQL(context.Context, *ExecSQLRequest) (*ExecSQLResponse, error)
+	GetAllCommits(context.Context, *GetAllCommitsRequest) (*GetAllCommitsResponse, error)
+	GetHead(context.Context, *GetHeadRequest) (*GetHeadResponse, error)
 }
 
 // UnimplementedTesterServer should be embedded to have forward compatible implementations.
 type UnimplementedTesterServer struct {
 }
 
-func (UnimplementedTesterServer) Insert(context.Context, *ExecSQLRequest) (*ExecSQLResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Insert not implemented")
+func (UnimplementedTesterServer) ExecSQL(context.Context, *ExecSQLRequest) (*ExecSQLResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ExecSQL not implemented")
+}
+func (UnimplementedTesterServer) GetAllCommits(context.Context, *GetAllCommitsRequest) (*GetAllCommitsResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetAllCommits not implemented")
+}
+func (UnimplementedTesterServer) GetHead(context.Context, *GetHeadRequest) (*GetHeadResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetHead not implemented")
 }
 
 // UnsafeTesterServer may be embedded to opt out of forward compatibility for this service.
@@ -72,20 +102,56 @@ func RegisterTesterServer(s grpc.ServiceRegistrar, srv TesterServer) {
 	s.RegisterService(&Tester_ServiceDesc, srv)
 }
 
-func _Tester_Insert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _Tester_ExecSQL_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ExecSQLRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(TesterServer).Insert(ctx, in)
+		return srv.(TesterServer).ExecSQL(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: Tester_Insert_FullMethodName,
+		FullMethod: Tester_ExecSQL_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TesterServer).Insert(ctx, req.(*ExecSQLRequest))
+		return srv.(TesterServer).ExecSQL(ctx, req.(*ExecSQLRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tester_GetAllCommits_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetAllCommitsRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TesterServer).GetAllCommits(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Tester_GetAllCommits_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TesterServer).GetAllCommits(ctx, req.(*GetAllCommitsRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Tester_GetHead_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetHeadRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(TesterServer).GetHead(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Tester_GetHead_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(TesterServer).GetHead(ctx, req.(*GetHeadRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -98,8 +164,16 @@ var Tester_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*TesterServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Insert",
-			Handler:    _Tester_Insert_Handler,
+			MethodName: "ExecSQL",
+			Handler:    _Tester_ExecSQL_Handler,
+		},
+		{
+			MethodName: "GetAllCommits",
+			Handler:    _Tester_GetAllCommits_Handler,
+		},
+		{
+			MethodName: "GetHead",
+			Handler:    _Tester_GetHead_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

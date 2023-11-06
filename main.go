@@ -75,7 +75,6 @@ func p2pRun(workDir string, port int, noGUI bool, noCommits bool, commitInterval
 	}
 
 	wg.Wait()
-	log.Info("Shutdown completed")
 
 	return nil
 }
@@ -236,6 +235,7 @@ func main() {
 	}
 
 	funcAfter := func(ctx *cli.Context) error {
+		log.Info("Shutdown completed")
 		if dbi != nil {
 			return dbi.Close()
 		}

@@ -18,7 +18,7 @@ import (
 	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
 	cmap "github.com/orcaman/concurrent-map"
 	p2pproto "github.com/protosio/distributeddolt/p2p/proto"
-	grpcserver "github.com/protosio/distributeddolt/p2p/server"
+	p2psrv "github.com/protosio/distributeddolt/p2p/server"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -27,11 +27,6 @@ import (
 const (
 	protosRPCProtocol = protocol.ID("/protos/rpc/0.0.1")
 )
-
-type PeerRegistrator interface {
-	AddPeer(peerID string, conn *grpc.ClientConn) error
-	RemovePeer(peerID string) error
-}
 
 type P2PClient struct {
 	p2pproto.PingerClient
@@ -45,13 +40,13 @@ func (c *P2PClient) GetID() string {
 }
 
 type P2P struct {
-	log             *logrus.Logger
-	host            host.Host
-	grpcServer      *grpc.Server
-	PeerChan        chan peer.AddrInfo
-	peerListChan    chan peer.IDSlice
-	clients         cmap.ConcurrentMap
-	peerRegistrator PeerRegistrator
+	log          *logrus.Logger
+	host         host.Host
+	grpcServer   *grpc.Server
+	PeerChan     chan peer.AddrInfo
+	peerListChan chan peer.IDSlice
+	clients      cmap.ConcurrentMap
+	externalDB   p2psrv.ExternalDB
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
@@ -130,8 +125,8 @@ func (p2p *P2P) peerDiscoveryProcessor() func() error {
 
 				p2p.log.Infof("Connected to %s", peer.ID.String())
 				p2p.clients.Set(peer.ID.String(), client)
-				if p2p.peerRegistrator != nil {
-					err = p2p.peerRegistrator.AddPeer(peer.ID.String(), conn)
+				if p2p.externalDB != nil {
+					err = p2p.externalDB.AddPeer(peer.ID.String(), conn)
 					if err != nil {
 						p2p.log.Errorf("Failed to add DB remote for '%s': %v", peer.ID.String(), err)
 					}
@@ -158,8 +153,8 @@ func (p2p *P2P) closeConnectionHandler(netw network.Network, conn network.Conn) 
 		p2p.log.Errorf("Error while disconnecting from peer '%s': %v", conn.RemotePeer().String(), err)
 	}
 	p2p.clients.Remove(conn.RemotePeer().String())
-	if p2p.peerRegistrator != nil {
-		if err := p2p.peerRegistrator.RemovePeer(conn.RemotePeer().String()); err != nil {
+	if p2p.externalDB != nil {
+		if err := p2p.externalDB.RemovePeer(conn.RemotePeer().String()); err != nil {
 			p2p.log.Errorf("Failed to remove DB peer for '%s': %v", conn.RemotePeer().String(), err)
 		}
 	}
@@ -180,8 +175,9 @@ func (p2p *P2P) StartServer() (func() error, error) {
 	ctx := context.TODO()
 
 	// register internal grpc servers
-	p2pproto.RegisterPingerServer(p2p.grpcServer, &grpcserver.Server{})
-	p2pproto.RegisterTesterServer(p2p.grpcServer, &grpcserver.Server{})
+	srv := &p2psrv.Server{DB: p2p.externalDB}
+	p2pproto.RegisterPingerServer(p2p.grpcServer, srv)
+	p2pproto.RegisterTesterServer(p2p.grpcServer, srv)
 
 	// serve grpc server over libp2p host
 	grpcListener := p2pgrpc.NewListener(ctx, p2p.host, protosRPCProtocol)
@@ -218,14 +214,14 @@ func (p2p *P2P) StartServer() (func() error, error) {
 }
 
 // NewManager creates and returns a new p2p manager
-func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, peerRegistrator PeerRegistrator) (*P2P, error) {
+func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, externalDB p2psrv.ExternalDB) (*P2P, error) {
 	p2p := &P2P{
-		PeerChan:        make(chan peer.AddrInfo),
-		peerListChan:    peerListChan,
-		clients:         cmap.New(),
-		log:             logger,
-		grpcServer:      grpc.NewServer(p2pgrpc.WithP2PCredentials()),
-		peerRegistrator: peerRegistrator,
+		PeerChan:     make(chan peer.AddrInfo),
+		peerListChan: peerListChan,
+		clients:      cmap.New(),
+		log:          logger,
+		grpcServer:   grpc.NewServer(p2pgrpc.WithP2PCredentials()),
+		externalDB:   externalDB,
 	}
 
 	workdirInfo, err := os.Stat(workdir)
