@@ -15,7 +15,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/protocol"
 	"github.com/libp2p/go-libp2p/p2p/discovery/mdns"
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
-	noise "github.com/libp2p/go-libp2p/p2p/security/noise"
+	"github.com/libp2p/go-libp2p/p2p/security/noise"
+	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	cmap "github.com/orcaman/concurrent-map"
 	p2pproto "github.com/protosio/distributeddolt/p2p/proto"
 	p2psrv "github.com/protosio/distributeddolt/p2p/server"
@@ -282,10 +283,10 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 	host, err := libp2p.New(
 		libp2p.Identity(prvKey),
 		libp2p.ListenAddrStrings(
-			fmt.Sprintf("/ip4/127.0.0.1/tcp/%d", port),
+			fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", port),
 		),
 		libp2p.Security(noise.ID, noise.New),
-		libp2p.DefaultTransports,
+		libp2p.Transport(quic.NewTransport),
 		libp2p.ConnectionManager(con),
 	)
 	if err != nil {

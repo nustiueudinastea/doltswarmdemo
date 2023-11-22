@@ -413,7 +413,6 @@ func TestIntegration(t *testing.T) {
 	peersWithCommits := map[string]bool{}
 	timeStart := time.Now()
 	for i := 0; i < 500; i++ {
-		fmt.Println(len(clients), len(peersWithCommits))
 		if len(peersWithCommits) == len(clients) {
 			break
 		}
