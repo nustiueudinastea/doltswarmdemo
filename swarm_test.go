@@ -11,6 +11,7 @@ import (
 	"time"
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
+	"github.com/dolthub/dolt/go/libraries/utils/concurrentmap"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/nustiueudinastea/doltswarm"
 	swarmproto "github.com/nustiueudinastea/doltswarm/proto"
@@ -28,6 +29,8 @@ import (
 // - ability to wait for commits to be propagated (eventually with a timeout)
 // - test conflic resolution using custom merge function
 // - test denial of commit
+// - test that peer is not allowed to commit to specific table
+// - test custom table merge function
 //
 
 const (
@@ -38,8 +41,24 @@ const (
 	startPort = 10500
 )
 
+var nrOfInstances = 5
+var enableProcessOutput = false
 var logger = logrus.New()
 var p2pStopper func() error
+
+func init() {
+	if os.Getenv("ENABLE_PROCESS_OUTPUT") == "true" {
+		enableProcessOutput = true
+	}
+
+	if os.Getenv("NR_INSTANCES") != "" {
+		nr, err := strconv.Atoi(os.Getenv("NR_INSTANCES"))
+		if err != nil {
+			logger.Fatal(err)
+		}
+		nrOfInstances = nr
+	}
+}
 
 //
 // testDB is a mock database
@@ -71,7 +90,7 @@ func (pr *testDB) GetLastCommit(branch string) (doltswarm.Commit, error) {
 //
 
 type ServerSyncer struct {
-	peerCommits map[string][]string
+	peerCommits *concurrentmap.Map[string, []string]
 }
 
 func (s *ServerSyncer) AdvertiseHead(ctx context.Context, req *swarmproto.AdvertiseHeadRequest) (*swarmproto.AdvertiseHeadResponse, error) {
@@ -79,12 +98,13 @@ func (s *ServerSyncer) AdvertiseHead(ctx context.Context, req *swarmproto.Advert
 	if !ok {
 		return nil, errors.New("no AuthInfo in context")
 	}
-	if _, found := s.peerCommits[peer.String()]; found {
-		s.peerCommits[peer.String()] = append(s.peerCommits[peer.String()], req.Head)
+	if commits, found := s.peerCommits.Get(peer.String()); found {
+		fmt.Println(peer.String(), "appending commit", req.Head)
+		s.peerCommits.Set(peer.String(), append(commits, req.Head))
 	} else {
-		s.peerCommits[peer.String()] = []string{req.Head}
+		fmt.Println(peer.String(), "first commit", req.Head)
+		s.peerCommits.Set(peer.String(), []string{req.Head})
 	}
-	logger.Infof("AdvertiseHead from %s: %s", peer, req.Head)
 	return &swarmproto.AdvertiseHeadResponse{}, nil
 }
 
@@ -93,7 +113,7 @@ func (s *ServerSyncer) RequestHead(ctx context.Context, req *swarmproto.RequestH
 }
 
 func (s *ServerSyncer) peerHasCommit(peer string, commit string) bool {
-	if commits, found := s.peerCommits[peer]; found {
+	if commits, found := s.peerCommits.Get(peer); found {
 		for _, c := range commits {
 			if commit == c {
 				return true
@@ -156,12 +176,13 @@ func runInstance(testDir string, nr int, mode string, initPeer string, printOutp
 			ctrl.exitErr <- fmt.Errorf("Error starting proc '%s': %s\n", ctrl.name, err.Error())
 			return
 		}
+		hostID := "unknown"
 
 		for {
 			select {
 			case line := <-c.OutputChan:
 				if printOutput {
-					fmt.Printf("stdout '%s': %s", ctrl.name, line)
+					fmt.Printf("stdout '%s'(%s): %s", ctrl.name, hostID, line)
 				}
 
 				if waitOutput != "" && strings.Contains(line, waitOutput) {
@@ -170,27 +191,29 @@ func runInstance(testDir string, nr int, mode string, initPeer string, printOutp
 					} else {
 						logger.Infof("%s: exiting", ctrl.name)
 					}
-					err := c.Exit()
-					if err != nil {
-						ctrl.exitErr <- fmt.Errorf("Error for proc '%s' when exiting: %s\n", ctrl.name, err.Error())
-					}
 				}
 
 				if strings.Contains(line, "Shutdown completed") {
+					err := c.Wait()
+					if err != nil {
+						ctrl.exitErr <- fmt.Errorf("Error for proc '%s' when exiting: %s\n", ctrl.name, err.Error())
+						return
+					}
+					logger.Infof("%s: terminated successfully", ctrl.name)
 					ctrl.exitErr <- nil
+					return
 				}
 
 				if strings.Contains(line, "server using id") {
 					tokens := strings.Split(line, " ")
 					keyToken := tokens[7]
-					hostID := keyToken[:len(keyToken)-2]
-					ctrl.hostID <- hostID
+					hostid := keyToken[:len(keyToken)-2]
+					ctrl.hostID <- hostid
+					hostID = hostid
 				}
 			case <-ctrl.quitChan:
-				err := c.Exit()
-				if err != nil {
-					ctrl.exitErr <- fmt.Errorf("Error for proc '%s' when existing: %s\n", ctrl.name, err.Error())
-				}
+				logger.Infof("%s: sending interrupt", ctrl.name)
+				c.Interrupt()
 			case <-timeout:
 				err := c.Exit()
 				if err != nil {
@@ -210,13 +233,13 @@ func doInit(testDir string, nrOfInstances int) error {
 
 	fmt.Println("==== Initialising test ====")
 
-	ctrl1 := runInstance(testDir, 1, localInit, "", false)
+	ctrl1 := runInstance(testDir, 1, localInit, "", enableProcessOutput)
 	err := <-ctrl1.exitErr
 	if err != nil {
 		return fmt.Errorf("failed to local init instance: %s", err.Error())
 	}
 
-	ctrl1 = runInstance(testDir, 1, server, "", false)
+	ctrl1 = runInstance(testDir, 1, server, "", enableProcessOutput)
 	ctrl1Host := <-ctrl1.hostID
 	defer func() {
 		ctrl1.quitChan <- true
@@ -228,7 +251,8 @@ func doInit(testDir string, nrOfInstances int) error {
 
 	clientInstances := make([]*controller, nrOfInstances-1)
 	for i := 0; i < nrOfInstances-1; i++ {
-		clientInstances[i] = runInstance(testDir, i+2, peerInit, ctrl1Host, false)
+		clientInstances[i] = runInstance(testDir, i+2, peerInit, ctrl1Host, enableProcessOutput)
+		time.Sleep(500 * time.Millisecond)
 	}
 
 	// print host ID for each instance
@@ -285,7 +309,6 @@ func TestIntegration(t *testing.T) {
 	}
 	defer os.RemoveAll(testDir)
 
-	nrOfInstances := 15
 	err = doInit(testDir, nrOfInstances)
 	if err != nil {
 		t.Fatal(err)
@@ -295,7 +318,8 @@ func TestIntegration(t *testing.T) {
 
 	instances := make([]*controller, nrOfInstances)
 	for i := 1; i <= nrOfInstances; i++ {
-		instances[i-1] = runInstance(testDir, i, server, "", true)
+		instances[i-1] = runInstance(testDir, i, server, "", enableProcessOutput)
+		time.Sleep(500 * time.Millisecond)
 	}
 	defer stopAllInstances(instances, t)
 
@@ -306,7 +330,8 @@ func TestIntegration(t *testing.T) {
 		instanceIDs[hostID] = instance.Name()
 	}
 
-	time.Sleep(10 * time.Second)
+	logger.Infof("Sleeping for 5 seconds")
+	time.Sleep(5 * time.Second)
 
 	peerListChan := make(chan peer.IDSlice, 100)
 	tDB := &testDB{}
@@ -315,8 +340,10 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	logger.Infof("TEST ID: %s", p2pmgr.GetID())
+
 	grpcServer := p2pmgr.GetGRPCServer()
-	srvSyncer := &ServerSyncer{peerCommits: make(map[string][]string)}
+	srvSyncer := &ServerSyncer{peerCommits: concurrentmap.New[string, []string]()}
 	swarmproto.RegisterDBSyncerServer(grpcServer, srvSyncer)
 
 	p2pStopper, err = p2pmgr.StartServer()
@@ -365,6 +392,9 @@ func TestIntegration(t *testing.T) {
 		}
 	}
 
+	logger.Infof("Sleeping for 5 seconds")
+	time.Sleep(10 * time.Second)
+
 	//
 	// Insert and make sure commit is propagated
 	//
@@ -378,22 +408,34 @@ func TestIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	passed := false
+	logger.Infof("Waiting for commit %s to be propagated", resp.Commit)
+
+	peersWithCommits := map[string]bool{}
 	timeStart := time.Now()
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 500; i++ {
+		fmt.Println(len(clients), len(peersWithCommits))
+		if len(peersWithCommits) == len(clients) {
+			break
+		}
 		for _, client := range clients {
 			if !srvSyncer.peerHasCommit(client.GetID(), resp.Commit) {
-				time.Sleep(50 * time.Millisecond)
 				continue
+			} else {
+				peersWithCommits[client.GetID()] = true
 			}
 		}
-		passed = true
-		break
+		time.Sleep(50 * time.Millisecond)
 	}
-	if !passed {
-		t.Fatal("commit not propagated to all peers")
+	for k, v := range srvSyncer.peerCommits.Snapshot() {
+		logger.Infof("Commits for %s: %v", k, v)
+	}
+	if len(peersWithCommits) != len(clients) {
+		t.Fatalf("commit not propagated to all peers. Only the following peers had all the commits: %v", peersWithCommits)
 	} else {
 		logger.Infof("It took %f seconds to propagate to %d clients", time.Since(timeStart).Seconds(), len(clients))
 	}
+
+	logger.Info("Waiting for all peers to finish communication")
+	time.Sleep(5 * time.Second)
 
 }

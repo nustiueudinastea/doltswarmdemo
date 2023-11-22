@@ -1,6 +1,6 @@
 module github.com/protosio/distributeddolt
 
-go 1.19
+go 1.21
 
 replace (
 	github.com/dolthub/dolt/go => /Users/al3x/code/protos/code/dolt/go
@@ -10,6 +10,7 @@ replace (
 
 require (
 	github.com/birros/go-libp2p-grpc v0.0.0-20221206173105-e89b5fdbc175
+	github.com/dolthub/dolt/go v0.40.5-0.20230824221934-83da423c3547
 	github.com/gdamore/tcell/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.31.0
 	github.com/nustiueudinastea/doltswarm v0.0.0-00010101000000-000000000000
@@ -18,7 +19,7 @@ require (
 	github.com/segmentio/ksuid v1.0.4
 	github.com/sirupsen/logrus v1.9.0
 	github.com/urfave/cli/v2 v2.23.0
-	google.golang.org/grpc v1.57.0
+	google.golang.org/grpc v1.57.1
 	google.golang.org/protobuf v1.31.0
 	gopkg.in/ryankurte/go-async-cmd.v1 v1.0.0
 )
@@ -47,17 +48,16 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
-	github.com/dolthub/dolt/go v0.40.5-0.20230824221934-83da423c3547 // indirect
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20221028234233-6b4d72a04fef // indirect
 	github.com/dolthub/driver v0.0.0-20230503220024-0df7c47dcc69 // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
-	github.com/dolthub/go-mysql-server v0.17.1-0.20230929002604-4c09261c634e // indirect
+	github.com/dolthub/go-mysql-server v0.17.1-0.20231121231446-0a2b90169f58 // indirect
 	github.com/dolthub/jsonpath v0.0.2-0.20230525180605-8dc13778fd72 // indirect
 	github.com/dolthub/maphash v0.0.0-20221220182448-74e1e1ea1577 // indirect
 	github.com/dolthub/swiss v0.1.0 // indirect
-	github.com/dolthub/vitess v0.0.0-20230929000236-6c60b48b32da // indirect
+	github.com/dolthub/vitess v0.0.0-20231109003730-c0fa018b5ef6 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
 	github.com/elastic/gosigar v0.14.2 // indirect
 	github.com/fatih/color v1.13.0 // indirect
@@ -168,17 +168,17 @@ require (
 	go.uber.org/fx v1.20.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.25.0 // indirect
-	golang.org/x/crypto v0.12.0 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63 // indirect
 	golang.org/x/mod v0.12.0 // indirect
-	golang.org/x/net v0.14.0 // indirect
+	golang.org/x/net v0.17.0 // indirect
 	golang.org/x/oauth2 v0.8.0 // indirect
 	golang.org/x/sync v0.3.0 // indirect
-	golang.org/x/sys v0.11.0 // indirect
-	golang.org/x/term v0.11.0 // indirect
-	golang.org/x/text v0.12.0 // indirect
+	golang.org/x/sys v0.13.0 // indirect
+	golang.org/x/term v0.13.0 // indirect
+	golang.org/x/text v0.13.0 // indirect
 	golang.org/x/time v0.1.0 // indirect
-	golang.org/x/tools v0.12.1-0.20230815132531-74c255bcf846 // indirect
+	golang.org/x/tools v0.13.0 // indirect
 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2 // indirect
 	google.golang.org/api v0.126.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect

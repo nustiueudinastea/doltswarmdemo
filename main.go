@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/dolthub/dolt/go/libraries/utils/concurrentmap"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/nustiueudinastea/doltswarm"
 	"github.com/protosio/distributeddolt/p2p"
@@ -15,7 +16,7 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-var stoppers = map[string]func() error{}
+var stoppers = concurrentmap.New[string, func() error]()
 var dbi *doltswarm.DB
 var log = logrus.New()
 var workDir string
@@ -27,12 +28,13 @@ var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
 func catchSignals(sigs chan os.Signal, wg *sync.WaitGroup) {
 	sig := <-sigs
 	log.Infof("Received OS signal %s. Terminating", sig.String())
-	for _, stopper := range stoppers {
+	stoppers.Iter(func(key string, stopper func() error) bool {
 		err := stopper()
 		if err != nil {
 			log.Error(err)
 		}
-	}
+		return true
+	})
 	wg.Done()
 }
 
@@ -60,10 +62,10 @@ func p2pRun(workDir string, port int, noGUI bool, noCommits bool, commitInterval
 	if err != nil {
 		return err
 	}
-	stoppers["p2p"] = p2pStopper
+	stoppers.Set("p2p", p2pStopper)
 
 	updaterSopper := startCommitUpdater(noCommits, commitInterval)
-	stoppers["update"] = updaterSopper
+	stoppers.Set("update", updaterSopper)
 
 	if !noGUI {
 		gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
@@ -121,6 +123,12 @@ func Init(localInit bool, peerInit string, port int) error {
 	if localInit && peerInit != "" {
 		return fmt.Errorf("cannot specify both local and peer init")
 	}
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	sigs := make(chan os.Signal, 1)
+	signal.Notify(sigs, syscall.SIGINT, syscall.SIGTERM)
+	go catchSignals(sigs, &wg)
 
 	if localInit {
 		err := dbi.InitLocal()
