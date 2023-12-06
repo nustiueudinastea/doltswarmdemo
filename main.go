@@ -11,7 +11,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/concurrentmap"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/nustiueudinastea/doltswarm"
-	"github.com/protosio/distributeddolt/p2p"
+	"github.com/protosio/doltswarmdemo/p2p"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
@@ -24,6 +24,7 @@ var commitListChan = make(chan []doltswarm.Commit, 100)
 var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
 var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
+var dbName = "doltswarmdemo"
 
 func catchSignals(sigs chan os.Signal, wg *sync.WaitGroup) {
 	sig := <-sigs
@@ -33,6 +34,7 @@ func catchSignals(sigs chan os.Signal, wg *sync.WaitGroup) {
 		if err != nil {
 			log.Error(err)
 		}
+		log.Infof("Stopped %s", key)
 		return true
 	})
 	wg.Done()
@@ -65,7 +67,7 @@ func p2pRun(workDir string, port int, noGUI bool, noCommits bool, commitInterval
 	stoppers.Set("p2p", p2pStopper)
 
 	updaterSopper := startCommitUpdater(noCommits, commitInterval)
-	stoppers.Set("update", updaterSopper)
+	stoppers.Set("updater", updaterSopper)
 
 	if !noGUI {
 		gui := createUI(peerListChan, commitListChan, uiLog.eventChan)
@@ -141,6 +143,11 @@ func Init(localInit bool, peerInit string, port int) error {
 			return fmt.Errorf("failed to start transaction: %w", err)
 		}
 
+		_, err = tx.Exec(fmt.Sprintf("USE %s;", dbName))
+		if err != nil {
+			return fmt.Errorf("failed to use db: %w", err)
+		}
+
 		// create table
 		_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
 			  id varchar(256) PRIMARY KEY,
@@ -204,6 +211,7 @@ func main() {
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
+		var init bool
 
 		level, err := logrus.ParseLevel(logLevel)
 		if err != nil {
@@ -216,12 +224,16 @@ func main() {
 			log.SetOutput(uiLog)
 		}
 
+		if ctx.Command.Name == "init" {
+			init = true
+		}
+
 		err = ensureDir(workDir)
 		if err != nil {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log)
+		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log, init)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}

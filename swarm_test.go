@@ -15,8 +15,8 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/nustiueudinastea/doltswarm"
 	swarmproto "github.com/nustiueudinastea/doltswarm/proto"
-	"github.com/protosio/distributeddolt/p2p"
-	p2pproto "github.com/protosio/distributeddolt/p2p/proto"
+	"github.com/protosio/doltswarmdemo/p2p"
+	p2pproto "github.com/protosio/doltswarmdemo/p2p/proto"
 	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
 	"google.golang.org/grpc"
@@ -42,11 +42,16 @@ const (
 )
 
 var nrOfInstances = 5
+var enableInitProcessOutput = false
 var enableProcessOutput = false
 var logger = logrus.New()
 var p2pStopper func() error
 
 func init() {
+	if os.Getenv("ENABLE_INIT_PROCESS_OUTPUT") == "true" {
+		enableInitProcessOutput = true
+	}
+
 	if os.Getenv("ENABLE_PROCESS_OUTPUT") == "true" {
 		enableProcessOutput = true
 	}
@@ -233,13 +238,13 @@ func doInit(testDir string, nrOfInstances int) error {
 
 	fmt.Println("==== Initialising test ====")
 
-	ctrl1 := runInstance(testDir, 1, localInit, "", enableProcessOutput)
+	ctrl1 := runInstance(testDir, 1, localInit, "", enableInitProcessOutput)
 	err := <-ctrl1.exitErr
 	if err != nil {
 		return fmt.Errorf("failed to local init instance: %s", err.Error())
 	}
 
-	ctrl1 = runInstance(testDir, 1, server, "", enableProcessOutput)
+	ctrl1 = runInstance(testDir, 1, server, "", enableInitProcessOutput)
 	ctrl1Host := <-ctrl1.hostID
 	defer func() {
 		ctrl1.quitChan <- true
@@ -251,7 +256,7 @@ func doInit(testDir string, nrOfInstances int) error {
 
 	clientInstances := make([]*controller, nrOfInstances-1)
 	for i := 0; i < nrOfInstances-1; i++ {
-		clientInstances[i] = runInstance(testDir, i+2, peerInit, ctrl1Host, enableProcessOutput)
+		clientInstances[i] = runInstance(testDir, i+2, peerInit, ctrl1Host, enableInitProcessOutput)
 		time.Sleep(500 * time.Millisecond)
 	}
 

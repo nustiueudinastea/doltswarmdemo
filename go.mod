@@ -1,4 +1,4 @@
-module github.com/protosio/distributeddolt
+module github.com/protosio/doltswarmdemo
 
 go 1.21
 
@@ -17,7 +17,7 @@ require (
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/rivo/tview v0.0.0-20221029100920-c4a7e501810d
 	github.com/segmentio/ksuid v1.0.4
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/urfave/cli/v2 v2.23.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.31.0
@@ -37,7 +37,7 @@ require (
 	github.com/bcicen/jstream v1.0.0 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bokwoon95/sq v0.1.1 // indirect
+	github.com/bokwoon95/sq v0.4.4 // indirect
 	github.com/cenkalti/backoff/v4 v4.1.3 // indirect
 	github.com/cespare/xxhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
@@ -49,7 +49,7 @@ require (
 	github.com/denisbrodbeck/machineid v1.0.1 // indirect
 	github.com/docker/go-units v0.5.0 // indirect
 	github.com/dolthub/dolt/go/gen/proto/dolt/services/eventsapi v0.0.0-20221028234233-6b4d72a04fef // indirect
-	github.com/dolthub/driver v0.0.0-20230503220024-0df7c47dcc69 // indirect
+	github.com/dolthub/driver v0.0.0-00010101000000-000000000000 // indirect
 	github.com/dolthub/flatbuffers/v23 v23.3.3-dh.2 // indirect
 	github.com/dolthub/fslock v0.0.3 // indirect
 	github.com/dolthub/go-icu-regex v0.0.0-20230524105445-af7e7991c97e // indirect
