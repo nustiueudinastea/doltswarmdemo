@@ -25,6 +25,7 @@ var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
 var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
 var dbName = "doltswarmdemo"
+var tableName = "testtable"
 
 func catchSignals(sigs chan os.Signal, wg *sync.WaitGroup) {
 	sig := <-sigs
@@ -102,7 +103,7 @@ func startCommitUpdater(noCommits bool, commitInterval int) func() error {
 				if noCommits {
 					continue
 				}
-				err := insert(p2pmgr.GetID() + " - " + timer.String())
+				err := dbi.Insert(tableName, p2pmgr.GetID()+" - "+timer.String())
 				if err != nil {
 					log.Errorf("Failed to insert time: %s", err.Error())
 					continue
@@ -377,7 +378,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return insert(ctx.Args().First())
+					return dbi.Insert(tableName, ctx.Args().First())
 				},
 			},
 		},
