@@ -165,7 +165,7 @@ func Init(localInit bool, peerInit string, port int) error {
 		}
 
 		// commit
-		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialise doltswarmdemo', '--author', 'Alex Giurgiu <alex@giurgiu.io>', '--date', '%s');", time.Now().Format(time.RFC3339Nano)))
+		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', 'Alex Giurgiu <alex@giurgiu.io>', '--date', '%s');", time.Now().Format(time.RFC3339Nano)))
 		if err != nil {
 			return fmt.Errorf("failed to commit table: %w", err)
 		}
@@ -234,7 +234,7 @@ func main() {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log, init)
+		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log, init, "Alex Giurgiu", "alex@giurgiu.io")
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}
@@ -246,6 +246,7 @@ func main() {
 
 		// grpc server needs to be added before opening the DB
 		dbi.AddGRPCServer(p2pmgr.GetGRPCServer())
+		dbi.AddSigner(p2pmgr)
 
 		err = dbi.Open()
 		if err != nil {

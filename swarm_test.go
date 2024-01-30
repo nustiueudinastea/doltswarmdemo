@@ -44,6 +44,7 @@ const (
 var nrOfInstances = 5
 var enableInitProcessOutput = false
 var enableProcessOutput = false
+var keepTestDir = false
 var logger = logrus.New()
 var p2pStopper func() error
 
@@ -54,6 +55,10 @@ func init() {
 
 	if os.Getenv("ENABLE_PROCESS_OUTPUT") == "true" {
 		enableProcessOutput = true
+	}
+
+	if os.Getenv("KEEP_TEST_DIR") == "true" {
+		keepTestDir = true
 	}
 
 	if os.Getenv("NR_INSTANCES") != "" {
@@ -312,7 +317,9 @@ func TestIntegration(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer os.RemoveAll(testDir)
+	if !keepTestDir {
+		defer os.RemoveAll(testDir)
+	}
 
 	err = doInit(testDir, nrOfInstances)
 	if err != nil {

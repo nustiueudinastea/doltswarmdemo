@@ -2,6 +2,7 @@ package p2p
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"time"
@@ -48,6 +49,33 @@ type P2P struct {
 	peerListChan chan peer.IDSlice
 	clients      cmap.ConcurrentMap
 	externalDB   p2psrv.ExternalDB
+	prvKey       crypto.PrivKey
+}
+
+func (p2p *P2P) Sign(data string) (string, error) {
+	sig, err := p2p.prvKey.Sign([]byte(data))
+	if err != nil {
+		return "", fmt.Errorf("failed to create signature: %w", err)
+	}
+
+	return fmt.Sprintf("%x", sha256.Sum256(sig)), nil
+}
+
+func (p2p *P2P) Verify(data []byte, signature string) error {
+	sig, err := p2p.prvKey.Sign(data)
+	if err != nil {
+		return fmt.Errorf("failed to create signature: %w", err)
+	}
+
+	if fmt.Sprintf("%x", sha256.Sum256(sig)) != signature {
+		return fmt.Errorf("signature mismatch")
+	}
+
+	return nil
+}
+
+func (p2p *P2P) PublicKey() string {
+	return p2p.host.ID().String()
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
@@ -280,6 +308,7 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 		return nil, err
 	}
 
+	p2p.prvKey = prvKey
 	host, err := libp2p.New(
 		libp2p.Identity(prvKey),
 		libp2p.ListenAddrStrings(
