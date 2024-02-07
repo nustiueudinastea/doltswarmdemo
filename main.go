@@ -25,6 +25,7 @@ var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
 var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
 var dbName = "doltswarmdemo"
+var domain = "giurgiu.io"
 var tableName = "testtable"
 
 func catchSignals(sigs chan os.Signal, wg *sync.WaitGroup) {
@@ -165,7 +166,7 @@ func Init(localInit bool, peerInit string, port int) error {
 		}
 
 		// commit
-		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', 'Alex Giurgiu <alex@giurgiu.io>', '--date', '%s');", time.Now().Format(time.RFC3339Nano)))
+		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', '%s <%s@%s>', '--date', '%s');", p2pmgr.PublicKey(), p2pmgr.PublicKey(), domain, time.Now().Format(time.RFC3339Nano)))
 		if err != nil {
 			return fmt.Errorf("failed to commit table: %w", err)
 		}
@@ -234,7 +235,7 @@ func main() {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log, init, "Alex Giurgiu", "alex@giurgiu.io")
+		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log, init, domain)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}
