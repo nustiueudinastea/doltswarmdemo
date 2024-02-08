@@ -166,7 +166,7 @@ func Init(localInit bool, peerInit string, port int) error {
 		}
 
 		// commit
-		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', '%s <%s@%s>', '--date', '%s');", p2pmgr.PublicKey(), p2pmgr.PublicKey(), domain, time.Now().Format(time.RFC3339Nano)))
+		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', '%s <%s@%s>', '--date', '%s');", p2pmgr.GetID(), p2pmgr.GetID(), domain, time.Now().Format(time.RFC3339Nano)))
 		if err != nil {
 			return fmt.Errorf("failed to commit table: %w", err)
 		}

@@ -13,6 +13,7 @@ require (
 	github.com/dolthub/dolt/go v0.40.5-0.20231206174848-7c88abef6e9f
 	github.com/gdamore/tcell/v2 v2.5.1
 	github.com/libp2p/go-libp2p v0.32.1
+	github.com/martinlindhe/base36 v1.1.1
 	github.com/nustiueudinastea/doltswarm v0.0.0-00010101000000-000000000000
 	github.com/orcaman/concurrent-map v1.0.0
 	github.com/rivo/tview v0.0.0-20221029100920-c4a7e501810d

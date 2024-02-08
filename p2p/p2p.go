@@ -2,7 +2,7 @@ package p2p
 
 import (
 	"context"
-	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"os"
 	"time"
@@ -18,6 +18,7 @@ import (
 	connmgr "github.com/libp2p/go-libp2p/p2p/net/connmgr"
 	"github.com/libp2p/go-libp2p/p2p/security/noise"
 	quic "github.com/libp2p/go-libp2p/p2p/transport/quic"
+	"github.com/martinlindhe/base36"
 	cmap "github.com/orcaman/concurrent-map"
 	p2pproto "github.com/protosio/doltswarmdemo/p2p/proto"
 	p2psrv "github.com/protosio/doltswarmdemo/p2p/server"
@@ -52,30 +53,52 @@ type P2P struct {
 	prvKey       crypto.PrivKey
 }
 
-func (p2p *P2P) Sign(data string) (string, error) {
-	sig, err := p2p.prvKey.Sign([]byte(data))
+func (p2p *P2P) Sign(commit string) (string, error) {
+	sig, err := p2p.prvKey.Sign([]byte(commit))
 	if err != nil {
 		return "", fmt.Errorf("failed to create signature: %w", err)
 	}
 
-	return fmt.Sprintf("%x", sha256.Sum256(sig)), nil
+	return base36.EncodeBytes(sig), nil
 }
 
-func (p2p *P2P) Verify(data []byte, signature string) error {
-	sig, err := p2p.prvKey.Sign(data)
+func (p2p *P2P) Verify(commit string, signature string, publicKey string) error {
+	// Decode the base64-encoded public key string to bytes
+	pubKeyBytes, err := base64.StdEncoding.DecodeString(publicKey)
 	if err != nil {
-		return fmt.Errorf("failed to create signature: %w", err)
+		return fmt.Errorf("failed to decode public key: %w", err)
 	}
 
-	if fmt.Sprintf("%x", sha256.Sum256(sig)) != signature {
-		return fmt.Errorf("signature mismatch")
+	// Unmarshal the public key bytes into a public key object
+	pubKey, err := crypto.UnmarshalPublicKey(pubKeyBytes)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal public key: %w", err)
+	}
+
+	// Decode the base64-encoded signature string to bytes
+	signatureBytes := base36.DecodeToBytes(signature)
+
+	// Verify the signature using the public key
+	verified, err := pubKey.Verify([]byte(commit), signatureBytes)
+	if err != nil {
+		return fmt.Errorf("failed to verify signature: %w", err)
+	}
+
+	if !verified {
+		return fmt.Errorf("verification failed for public key %s commit %s signature %s ", publicKey, commit, signature)
 	}
 
 	return nil
 }
 
 func (p2p *P2P) PublicKey() string {
-	return p2p.host.ID().String()
+
+	mPubKey, err := crypto.MarshalPublicKey(p2p.prvKey.GetPublic())
+	if err != nil {
+		panic(err)
+	}
+
+	return base64.StdEncoding.EncodeToString(mPubKey)
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
