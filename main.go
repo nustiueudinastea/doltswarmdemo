@@ -12,6 +12,7 @@ import (
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/nustiueudinastea/doltswarm"
 	"github.com/protosio/doltswarmdemo/p2p"
+	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"
 )
@@ -104,12 +105,19 @@ func startCommitUpdater(noCommits bool, commitInterval int) func() error {
 				if noCommits {
 					continue
 				}
-				err := dbi.Insert(tableName, p2pmgr.GetID()+" - "+timer.String())
+
+				uid, err := ksuid.NewRandom()
+				if err != nil {
+					log.Errorf("failed to create uid: %w", err)
+					continue
+				}
+				queryString := fmt.Sprintf("INSERT INTO %s (id, name) VALUES ('%s', '%s');", tableName, uid.String(), p2pmgr.GetID()+" - "+timer.String())
+				commitHash, err := dbi.ExecAndCommit(queryString, "Periodic commit at "+timer.String())
 				if err != nil {
 					log.Errorf("Failed to insert time: %s", err.Error())
 					continue
 				}
-				log.Infof("Inserted time '%s' into db", timer.String())
+				log.Infof("Inserted time '%s' into db with commit '%s'", timer.String(), commitHash)
 			case <-stopSignal:
 				log.Info("Stopping commit updater")
 				return
@@ -140,40 +148,12 @@ func Init(localInit bool, peerInit string, port int) error {
 			return fmt.Errorf("failed to init local db: %w", err)
 		}
 
-		tx, err := dbi.Begin()
-		if err != nil {
-			return fmt.Errorf("failed to start transaction: %w", err)
-		}
-
-		_, err = tx.Exec(fmt.Sprintf("USE %s;", dbName))
-		if err != nil {
-			return fmt.Errorf("failed to use db: %w", err)
-		}
-
-		// create table
-		_, err = tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
-			  id varchar(256) PRIMARY KEY,
-			  name varchar(512)
-			);`, tableName))
+		_, err = dbi.ExecAndCommit(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
+			id varchar(256) PRIMARY KEY,
+			name varchar(512)
+		  );`, tableName), "Initialize doltswarmdemo")
 		if err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
-		}
-
-		// add
-		_, err = tx.Exec(`CALL DOLT_ADD('-A');`)
-		if err != nil {
-			return fmt.Errorf("failed to commit table: %w", err)
-		}
-
-		// commit
-		_, err = tx.Exec(fmt.Sprintf("CALL DOLT_COMMIT('-m', 'Initialize doltswarmdemo', '--author', '%s <%s@%s>', '--date', '%s');", p2pmgr.GetID(), p2pmgr.GetID(), domain, time.Now().Format(time.RFC3339Nano)))
-		if err != nil {
-			return fmt.Errorf("failed to commit table: %w", err)
-		}
-
-		err = tx.Commit()
-		if err != nil {
-			return fmt.Errorf("failed to commit transaction: %w", err)
 		}
 
 		return nil
@@ -344,43 +324,6 @@ func main() {
 				Action: func(ctx *cli.Context) error {
 					fmt.Printf("PEER ID: %s\n", p2pmgr.GetID())
 					return nil
-				},
-			},
-			{
-				Name:   "sql",
-				Usage:  "runs SQL",
-				Before: funcBefore,
-				After:  funcAfter,
-				Action: func(ctx *cli.Context) error {
-					_, err := dbi.Query(ctx.Args().First())
-					return err
-				},
-			},
-			// {
-			// 	Name:   "commits",
-			// 	Usage:  "list all commits",
-			// 	Before: funcBefore,
-			// 	After:  funcAfter,
-			// 	Action: func(ctx *cli.Context) error {
-			// 		return dbi.PrintAllCommits()
-			// 	},
-			// },
-			// {
-			// 	Name:   "data",
-			// 	Usage:  "show all data",
-			// 	Before: funcBefore,
-			// 	After:  funcAfter,
-			// 	Action: func(ctx *cli.Context) error {
-			// 		return dbi.PrintAllData()
-			// 	},
-			// },
-			{
-				Name:   "insert",
-				Usage:  "insert data",
-				Before: funcBefore,
-				After:  funcAfter,
-				Action: func(ctx *cli.Context) error {
-					return dbi.Insert(tableName, ctx.Args().First())
 				},
 			},
 		},
