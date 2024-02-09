@@ -108,7 +108,7 @@ func startCommitUpdater(noCommits bool, commitInterval int) func() error {
 
 				uid, err := ksuid.NewRandom()
 				if err != nil {
-					log.Errorf("failed to create uid: %w", err)
+					log.Errorf("failed to create uid: %s", err.Error())
 					continue
 				}
 				queryString := fmt.Sprintf("INSERT INTO %s (id, name) VALUES ('%s', '%s');", tableName, uid.String(), p2pmgr.GetID()+" - "+timer.String())
@@ -215,7 +215,7 @@ func main() {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, "doltswarmdemo", log, init, domain)
+		dbi, err = doltswarm.New(workDir, dbName, log, init, domain)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}
