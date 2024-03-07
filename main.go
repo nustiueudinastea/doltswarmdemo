@@ -55,6 +55,10 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 
 func p2pRun(noGUI bool, noCommits bool, commitInterval int) error {
 
+	if !dbi.Initialized() {
+		return fmt.Errorf("db not initialized")
+	}
+
 	// Handle OS signals
 	var wg sync.WaitGroup
 	wg.Add(1)
@@ -192,7 +196,6 @@ func main() {
 
 	funcBefore := func(ctx *cli.Context) error {
 		var err error
-		var init bool
 
 		level, err := logrus.ParseLevel(logLevel)
 		if err != nil {
@@ -205,33 +208,29 @@ func main() {
 			log.SetOutput(uiLog)
 		}
 
-		if ctx.Command.Name == "init" {
-			init = true
-		}
-
 		err = ensureDir(workDir)
 		if err != nil {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, dbName, log.WithField("context", "db"), init)
+		p2pKey, err := p2p.NewKey(workDir)
+		if err != nil {
+			return fmt.Errorf("failed to create key: %v", err)
+		}
+
+		dbi, err = doltswarm.Open(workDir, dbName, log.WithField("context", "db"), p2pKey)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}
 
-		p2pmgr, err = p2p.NewManager(workDir, port, peerListChan, log, dbi)
+		p2pmgr, err = p2p.NewManager(p2pKey, port, peerListChan, log, dbi)
 		if err != nil {
 			return fmt.Errorf("failed to create p2p manager: %v", err)
 		}
 
 		// grpc server needs to be added before opening the DB
 		dbi.AddGRPCServer(p2pmgr.GetGRPCServer())
-		dbi.AddSigner(p2pmgr)
-
-		err = dbi.Open()
-		if err != nil {
-			return fmt.Errorf("failed to open db: %v", err)
-		}
+		dbi.EnableGRPCServers()
 
 		return nil
 	}

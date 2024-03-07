@@ -53,7 +53,11 @@ type P2P struct {
 	prvKey       crypto.PrivKey
 }
 
-func (p2p *P2P) Sign(commit string) (string, error) {
+type P2PKey struct {
+	prvKey crypto.PrivKey
+}
+
+func (p2p *P2PKey) Sign(commit string) (string, error) {
 	sig, err := p2p.prvKey.Sign([]byte(commit))
 	if err != nil {
 		return "", fmt.Errorf("failed to create signature: %w", err)
@@ -62,7 +66,7 @@ func (p2p *P2P) Sign(commit string) (string, error) {
 	return base36.EncodeBytes(sig), nil
 }
 
-func (p2p *P2P) Verify(commit string, signature string, publicKey string) error {
+func (p2p *P2PKey) Verify(commit string, signature string, publicKey string) error {
 	// Decode the base64-encoded public key string to bytes
 	pubKeyBytes, err := base64.StdEncoding.DecodeString(publicKey)
 	if err != nil {
@@ -91,7 +95,7 @@ func (p2p *P2P) Verify(commit string, signature string, publicKey string) error 
 	return nil
 }
 
-func (p2p *P2P) PublicKey() string {
+func (p2p *P2PKey) PublicKey() string {
 
 	mPubKey, err := crypto.MarshalPublicKey(p2p.prvKey.GetPublic())
 	if err != nil {
@@ -99,6 +103,20 @@ func (p2p *P2P) PublicKey() string {
 	}
 
 	return base64.StdEncoding.EncodeToString(mPubKey)
+}
+
+func (p2p *P2PKey) PrivateKey() crypto.PrivKey {
+	return p2p.prvKey
+}
+
+func (p2p *P2PKey) GetID() string {
+
+	peerID, err := peer.IDFromPrivateKey(p2p.prvKey)
+	if err != nil {
+		panic(err)
+	}
+
+	return peerID.String()
 }
 
 func (p2p *P2P) HandlePeerFound(pi peer.AddrInfo) {
@@ -265,17 +283,7 @@ func (p2p *P2P) StartServer() (func() error, error) {
 
 }
 
-// NewManager creates and returns a new p2p manager
-func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, externalDB p2psrv.ExternalDB) (*P2P, error) {
-	p2p := &P2P{
-		PeerChan:     make(chan peer.AddrInfo),
-		peerListChan: peerListChan,
-		clients:      cmap.New(),
-		log:          logger,
-		grpcServer:   grpc.NewServer(p2pgrpc.WithP2PCredentials()),
-		externalDB:   externalDB,
-	}
-
+func NewKey(workdir string) (*P2PKey, error) {
 	workdirInfo, err := os.Stat(workdir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -325,15 +333,28 @@ func NewManager(workdir string, port int, peerListChan chan peer.IDSlice, logger
 			return nil, err
 		}
 	}
+	return &P2PKey{prvKey: prvKey}, nil
+}
+
+// NewManager creates and returns a new p2p manager
+func NewManager(p2pkey *P2PKey, port int, peerListChan chan peer.IDSlice, logger *logrus.Logger, externalDB p2psrv.ExternalDB) (*P2P, error) {
+	p2p := &P2P{
+		PeerChan:     make(chan peer.AddrInfo),
+		peerListChan: peerListChan,
+		clients:      cmap.New(),
+		log:          logger,
+		grpcServer:   grpc.NewServer(p2pgrpc.WithP2PCredentials()),
+		externalDB:   externalDB,
+		prvKey:       p2pkey.PrivateKey(),
+	}
 
 	con, err := connmgr.NewConnManager(100, 400)
 	if err != nil {
 		return nil, err
 	}
 
-	p2p.prvKey = prvKey
 	host, err := libp2p.New(
-		libp2p.Identity(prvKey),
+		libp2p.Identity(p2p.prvKey),
 		libp2p.ListenAddrStrings(
 			fmt.Sprintf("/ip4/127.0.0.1/udp/%d/quic-v1", port),
 		),

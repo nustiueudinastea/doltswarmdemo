@@ -347,7 +347,11 @@ func TestIntegration(t *testing.T) {
 
 	peerListChan := make(chan peer.IDSlice, 100)
 	tDB := &testDB{}
-	p2pmgr, err = p2p.NewManager(testDir+"/testp2p", startPort, peerListChan, logger, tDB)
+	p2pkey, err := p2p.NewKey(testDir + "/testp2p")
+	if err != nil {
+		t.Fatal(err)
+	}
+	p2pmgr, err = p2p.NewManager(p2pkey, startPort, peerListChan, logger, tDB)
 	if err != nil {
 		t.Fatal(err)
 	}
