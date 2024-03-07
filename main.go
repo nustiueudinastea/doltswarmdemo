@@ -26,7 +26,6 @@ var peerListChan = make(chan peer.IDSlice, 1000)
 var p2pmgr *p2p.P2P
 var uiLog = &EventWriter{eventChan: make(chan []byte, 5000)}
 var dbName = "doltswarmdemo"
-var domain = "giurgiu.io"
 var tableName = "testtable"
 
 func catchSignals(sigs chan os.Signal, wg *sync.WaitGroup) {
@@ -54,7 +53,7 @@ func (ew *EventWriter) Write(p []byte) (n int, err error) {
 	return len(logLine), nil
 }
 
-func p2pRun(workDir string, port int, noGUI bool, noCommits bool, commitInterval int) error {
+func p2pRun(noGUI bool, noCommits bool, commitInterval int) error {
 
 	// Handle OS signals
 	var wg sync.WaitGroup
@@ -215,7 +214,7 @@ func main() {
 			return fmt.Errorf("failed to create working directory: %v", err)
 		}
 
-		dbi, err = doltswarm.New(workDir, dbName, log, init, domain)
+		dbi, err = doltswarm.New(workDir, dbName, log.WithField("context", "db"), init)
 		if err != nil {
 			return fmt.Errorf("failed to create db: %v", err)
 		}
@@ -246,7 +245,7 @@ func main() {
 	}
 
 	app := &cli.App{
-		Name: "distributeddolt",
+		Name: "doltswarmdemo",
 		Flags: []cli.Flag{
 			&cli.StringFlag{
 				Name:        "log",
@@ -292,7 +291,7 @@ func main() {
 				Before: funcBefore,
 				After:  funcAfter,
 				Action: func(ctx *cli.Context) error {
-					return p2pRun(workDir, port, noGUI, noCommits, commitInterval)
+					return p2pRun(noGUI, noCommits, commitInterval)
 				},
 			},
 			{
