@@ -11,7 +11,7 @@ import (
 	"github.com/dolthub/dolt/go/libraries/utils/concurrentmap"
 	"github.com/libp2p/go-libp2p/core/peer"
 	"github.com/nustiueudinastea/doltswarm"
-	"github.com/protosio/doltswarmdemo/p2p"
+	"github.com/nustiueudinastea/doltswarmdemo/p2p"
 	"github.com/segmentio/ksuid"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli/v2"

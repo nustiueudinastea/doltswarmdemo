@@ -6,7 +6,7 @@ import (
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
 	"github.com/nustiueudinastea/doltswarm"
-	"github.com/protosio/doltswarmdemo/p2p/proto"
+	"github.com/nustiueudinastea/doltswarmdemo/p2p/proto"
 	"google.golang.org/grpc"
 )
 

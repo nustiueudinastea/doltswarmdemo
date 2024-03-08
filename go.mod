@@ -1,4 +1,4 @@
-module github.com/protosio/doltswarmdemo
+module github.com/nustiueudinastea/doltswarmdemo
 
 go 1.21
 
