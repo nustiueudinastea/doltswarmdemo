@@ -409,7 +409,7 @@ func TestIntegration(t *testing.T) {
 		allHeads[client.GetID()] = resp.Commit
 	}
 	if err != nil {
-		t.Fatalf(err.Error())
+		t.Fatalf("%s", err.Error())
 	}
 	if len(allHeads) != nrOfInstances {
 		t.Error("not all instances have a head. Expected: ", nrOfInstances, " Got: ", len(allHeads))
