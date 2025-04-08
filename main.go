@@ -1,6 +1,7 @@
 package main
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"os/signal"
@@ -115,7 +116,15 @@ func startCommitUpdater(noCommits bool, commitInterval int) func() error {
 					continue
 				}
 				queryString := fmt.Sprintf("INSERT INTO %s (id, name) VALUES ('%s', '%s');", tableName, uid.String(), p2pmgr.GetID()+" - "+timer.String())
-				commitHash, err := dbi.ExecAndCommit(queryString, "Periodic commit at "+timer.String())
+				execFunc := func(tx *sql.Tx) error {
+					_, err := tx.Exec(queryString)
+					if err != nil {
+						return fmt.Errorf("failed to insert: %v", err)
+					}
+					return nil
+				}
+
+				commitHash, err := dbi.ExecAndCommit(execFunc, "Periodic commit at "+timer.String())
 				if err != nil {
 					log.Errorf("Failed to insert time: %s", err.Error())
 					continue
@@ -151,10 +160,18 @@ func Init(localInit bool, peerInit string, port int) error {
 			return fmt.Errorf("failed to init local db: %w", err)
 		}
 
-		_, err = dbi.ExecAndCommit(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
-			id varchar(256) PRIMARY KEY,
-			name varchar(512)
-		  );`, tableName), "Initialize doltswarmdemo")
+		execFunc := func(tx *sql.Tx) error {
+			_, err := tx.Exec(fmt.Sprintf(`CREATE TABLE IF NOT EXISTS %s(
+				id varchar(256) PRIMARY KEY,
+				name varchar(512)
+			  );`, tableName))
+			if err != nil {
+				return fmt.Errorf("failed to insert: %v", err)
+			}
+			return nil
+		}
+
+		_, err = dbi.ExecAndCommit(execFunc, "Initialize doltswarmdemo")
 		if err != nil {
 			return fmt.Errorf("failed to create table: %w", err)
 		}
@@ -229,8 +246,10 @@ func main() {
 		}
 
 		// grpc server needs to be added before opening the DB
-		dbi.AddGRPCServer(p2pmgr.GetGRPCServer())
-		dbi.EnableGRPCServers()
+		err = dbi.EnableGRPCServers(p2pmgr.GetGRPCServer())
+		if err != nil {
+			return fmt.Errorf("failed to create p2p manager: %v", err)
+		}
 
 		return nil
 	}

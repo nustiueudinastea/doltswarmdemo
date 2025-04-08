@@ -2,7 +2,9 @@ package server
 
 import (
 	"context"
+	"database/sql"
 	"errors"
+	"fmt"
 
 	p2pgrpc "github.com/birros/go-libp2p-grpc"
 	"github.com/nustiueudinastea/doltswarm"
@@ -17,8 +19,11 @@ type ExternalDB interface {
 	AddPeer(peerID string, conn *grpc.ClientConn) error
 	RemovePeer(peerID string) error
 	GetAllCommits() ([]doltswarm.Commit, error)
-	ExecAndCommit(query string, commitMsg string) (string, error)
+	ExecAndCommit(execFunc doltswarm.ExecFunc, commitMsg string) (string, error)
 	GetLastCommit(branch string) (doltswarm.Commit, error)
+	InitFromPeer(peerID string) error
+	EnableGRPCServers(server *grpc.Server) error
+	Initialized() bool
 }
 
 type Server struct {
@@ -38,7 +43,15 @@ func (s *Server) Ping(ctx context.Context, req *proto.PingRequest) (*proto.PingR
 }
 
 func (s *Server) ExecSQL(ctx context.Context, req *proto.ExecSQLRequest) (*proto.ExecSQLResponse, error) {
-	commit, err := s.DB.ExecAndCommit(req.Statement, req.Msg)
+	execFunc := func(tx *sql.Tx) error {
+		_, err := tx.Exec(req.Statement)
+		if err != nil {
+			return fmt.Errorf("failed to insert: %v", err)
+		}
+		return nil
+	}
+
+	commit, err := s.DB.ExecAndCommit(execFunc, req.Msg)
 	if err != nil {
 		return nil, err
 	}

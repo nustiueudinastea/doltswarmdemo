@@ -87,12 +87,24 @@ func (pr *testDB) GetAllCommits() ([]doltswarm.Commit, error) {
 	return []doltswarm.Commit{}, nil
 }
 
-func (pr *testDB) ExecAndCommit(query string, commitMsg string) (string, error) {
+func (pr *testDB) ExecAndCommit(execFunc doltswarm.ExecFunc, commitMsg string) (string, error) {
 	return "", nil
+}
+
+func (pr *testDB) InitFromPeer(peerID string) error {
+	return nil
 }
 
 func (pr *testDB) GetLastCommit(branch string) (doltswarm.Commit, error) {
 	return doltswarm.Commit{}, nil
+}
+
+func (pr *testDB) EnableGRPCServers(server *grpc.Server) error {
+	return nil
+}
+
+func (pr *testDB) Initialized() bool {
+	return false
 }
 
 //
